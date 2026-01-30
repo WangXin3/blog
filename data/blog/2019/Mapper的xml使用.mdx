@@ -1,5 +1,5 @@
 ---
-title: Mapper.xml使用
+title: Mapper的xml使用
 date: '2019-05-02'
 tags: ['Java', 'MyBatis']
 draft: false
@@ -17,8 +17,6 @@ summary: 'MyBatis XML'
 - chche-ref：其他命名空间缓存配置的引用
 - resultMap：最复杂也是最强大的元素，用来描述如何从数据库结果集中加载对象
 
----
-
 #### ${ } 和 #{ } 的区别？
 
 "#{ }"：用于传递查询的参数，一般用于从dao层传递一个string或者其他的参数过来，mybatis对这个参数会进行加引号的操作，将参数转变为一个字符串。 （可以有效防止sql注入）
@@ -27,15 +25,13 @@ summary: 'MyBatis XML'
 
 示例：
 
-```xml
+```sql
 SELECT * FROM employee WHERE name=#{name}
-<!-- 我们会从dao传一个参数，比如jack过来，mybatis生成对应的sql为： -->
+# 我们会从dao传一个参数，比如jack过来，mybatis生成对应的sql为：
 SELECT * FROM employee WHERE name="jack"
 
-<!-- ############################################################ -->
-
 SELECT * FROM employee ORDER BY ${salary}
-<!-- 一般用于ORDER BY的后面，不会进行任何的处理，直接生成sql语句，生成sql为： -->
+# 一般用于ORDER BY的后面，不会进行任何的处理，直接生成sql语句，生成sql为：
 SELECT * FROM employee ORDER BY salary
 ```
 
@@ -44,16 +40,14 @@ SELECT * FROM employee ORDER BY salary
 - 会引起sql注入，因为${ }会直接参与sql编译
 - 会影响sql语句的预编译，因为 ${ } 仅仅为一个纯碎的 string 替换，在动态 SQL 解析阶段将会进行变量替换
 
----
 
-####select元素常用属性描述如下
+#### select元素常用属性描述如下
 
 - id：在命名空间的唯一标识符，可以i被用来引用这个语句
 - parameterType：入参类型（完全限定名或别名）
 - resultType：返回类型（完全限定名或别名）
 - resultMap：它可以将查询到的复杂数据（比如查询到几个表中数据）映射到一个结果集当中
 
----
 
 insert、update、delete元素常用属性如下（很多同select元素属性）：
 
@@ -87,7 +81,6 @@ selectKey元素描述如下：
 - resultType：结果的类型。通常Mybatis可以推算出来，但是为了准确，建议写出来。
 - order：可以被设置为BEFORE或AFTER。如为BEFORE，那么他会首先选择主键，设置keyProperty，然后执行插入语句。反之亦然。
 
----
 
 #### Sql片段
 
@@ -110,8 +103,6 @@ sql元素可以被用来定义可重用的SQL代码段，可以包含在其他�
 </select>
 ```
 
----
-
 #### 查询入参parameterType
 
 - 可以设置为简单数据类型，很少用。
@@ -124,9 +115,8 @@ sql元素可以被用来定义可重用的SQL代码段，可以包含在其他�
 </insert>
 ```
 
-如果User类型的参数对象传递到了语句中，如#{id}语句则会查找参数对象User的id属性，#{username}和#{password}也是一样，然后将他们的之传入预处理语句的参数中。
+如果User类型的参数对象传递到了语句中，如`#{id}`语句则会查找参数对象User的id属性，`#{username}`和`#{password}`也是一样，然后将他们的之传入预处理语句的参数中。
 
----
 
 #### ResultMaps
 
@@ -141,18 +131,18 @@ sql元素可以被用来定义可重用的SQL代码段，可以包含在其他�
 
 属性解释：
 
-- id：resultMap的唯一标识符
-- type：resultMap实际返回的类型
+- `id`：resultMap的唯一标识符
+- `type`：resultMap实际返回的类型
 
 resultMap子元素解释：
 
-- id：数据库的主键，其中property为Bean类的属性，column为数据库对应列名
-- result：表示为普通列，其中property为Bean类的属性，column为数据库对应列名
-- association
-  - column：数据库表列名，表示此列的值作为参数进行之后的select语句查询
-  - property：返回类型对象的属性名
-  - javaType：该属性对应的类型名称
-  - select：表示执行一条查询语句，将查询到的数据封装到property所代表的对象中
+- `id`：数据库的主键，其中property为Bean类的属性，column为数据库对应列名
+- `result`：表示为普通列，其中property为Bean类的属性，column为数据库对应列名
+- `association`
+- `column`：数据库表列名，表示此列的值作为参数进行之后的select语句查询
+- `property`：返回类型对象的属性名
+- `javaType`：该属性对应的类型名称
+- `select`：表示执行一条查询语句，将查询到的数据封装到property所代表的对象中
 
 ```xml
 <!-- 映射学生对象的resultMap -->
@@ -171,13 +161,13 @@ resultMap子元素解释：
 </select>
 ```
 
-- collection
-  - property：表示返回类型的属性名
-  - javaType：表示返回类型的名称，本例为ArrayList集合
-  - ofType：表示集合当中的类型，本例为Student类型
-  - column：数据库表列名，表示此列的值作为参数进行之后的select语句查询
-  - select：一条查询语句，结果赋给property所代表的对象
-  - fetchType：取值为eager和lazy。eager表示立即加载；lazy表示懒加载。
+- `collection`
+- `property`：表示返回类型的属性名
+- `javaType`：表示返回类型的名称，本例为ArrayList集合
+- `ofType`：表示集合当中的类型，本例为Student类型
+- `column`：数据库表列名，表示此列的值作为参数进行之后的select语句查询
+- `select`：一条查询语句，结果赋给property所代表的对象
+- `fetchType`：取值为eager和lazy。eager表示立即加载；lazy表示懒加载。
 
 一对多关系通常映射为集合对象，而由于多方的数据量可能很大，所有通常采用懒加载；
 
@@ -216,5 +206,3 @@ resultMap子元素解释：
     SELECT * FROM TB_STUDENT where clazz_id = #{id}
 </select>
 ```
-
----
