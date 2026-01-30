@@ -1,0 +1,63 @@
+---
+title: MySQL创建存储过程和MyBatis调用存储过程
+date: '2019-05-02'
+tags: ['Java', 'MyBatis', 'MySQL']
+draft: false
+summary: 'MySQL创建存储过程和MyBatis调用存储过程'
+---
+
+#### MySQL创建存储过程
+
+```sql
+# 语法
+DELIMITER //
+CREATE PROCEDURE
+存储过程名称(IN或OUT或INOUT 参数名 数据类型，IN或OUT或INOUT 参数名 数据类型(长度)，...)
+BEGIN
+	# 具体SQL操作
+END
+//
+
+# 示例
+# 插入数据的存储过程
+DROP PROCEDURE IF EXISTS insert_user;
+DELIMITER //
+CREATE PROCEDURE insert_user(OUT v_id INTEGER,IN v_name VARCHAR(18),IN v_sex VARCHAR(19),
+                             IN v_age INTEGER)
+BEGIN
+    # 执行insert操作，values中的值是传入的参数
+    INSERT INTO tb_user(NAME,sex,age) VALUES(v_name,v_sex,v_age);
+    # 将insert成功自动生成的主键id值设置到变量v_id中返回
+    SET v_id = LAST_INSERT_ID();
+END
+//
+```
+
+- IN：参数的值必须在调用存储过程时指定，在存储过程中修改该参数的值不能被返回，为默认值
+- OUT：该值可在存储过程内部被改变，并可返回。当被赋值时，调用存储过程时，不会被用到，为null
+- INOUT：调用时指定，并且可被改变和返回
+
+---
+
+#### MyBatis操作MySQL存储过程
+
+```xml
+<insert id="saveUser" parameterType="org.fkit.domain.User" statementType="CALLABLE">
+    {
+    	call insert_user(
+    		<!-- mode=OUT时，必须指定jdbcType类型 -->
+    		#{id,mode=OUT,jdbcType=INTEGER},
+    		#{name,mode=IN},
+    		#{sex,mode=IN},
+    		#{age,mode=IN}
+    	)
+    }
+</insert>
+```
+
+注意：
+
+- 当操作存储过程时，字段mode=OUT时，必须指定jdbcType类型；
+- 当mode=INT时，MyBatis提供了默认的jdbcType
+
+---

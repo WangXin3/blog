@@ -1,0 +1,656 @@
+---
+title: SpringBoot整合SpringSecurity
+date: '2020-02-24'
+tags: ['SpringBoot', 'SpringSecurity']
+draft: false
+summary: 'SpringBoot整合SpringSecurity'
+---
+
+### 一、基本使用
+
+1. 创建一个maven项目，导入依赖
+
+   ```xml
+   <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-starter-security</artifactId>
+   </dependency>
+   <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-starter-web</artifactId>
+   </dependency>
+   ```
+
+2. 添加一个简单的接口
+
+   ```java
+   @RestController
+   public class HelloController {
+   	@GetMapping("/hello")
+   	public String hello() {
+   		return "hello world!";
+   	}
+   }
+   ```
+
+3. 启动项目，访问`/hello`接口，会默认跳转到SpringSecurity提供的登录页
+
+   ![](https://i.loli.net/2020/02/24/BLfFAcX7hYE1Ip8.png)
+
+4. 默认账号为user，密码在项目启动时，控制台已经打印出来了。
+
+5. 输入账号密码，就可以登录并访问`/hello`接口了
+
+### 二、配置文件配置账号密码
+
+在`application.yml`中配置
+
+```yaml
+spring:
+  security:
+    user:
+      name: admin
+      password: 123456
+      roles: admin
+```
+
+再次启动项目，默认账号就会失效，控制台也不会在打印随机密码了，可以使用`admin`账号，`123456`密码进行登录，登录成功之后，这个账号还有`admin`角色
+
+### 三、内存中配置
+
+通过自定义类继承`WebSecurityConfigurerAdapter`，可以对SpringSecurity实现更多的配置
+
+```java
+@Configuration
+public class MyWebSecurityConfig extends WebSecurityConfigurerAdapter {
+    /**
+	 * SpringSecurity 在5.0之后必须指定一种加密方式
+	 * 这里使用不加密
+	 * @return
+	 */
+    @Bean
+	PasswordEncoder passwordEncoder() {
+		return NoOpPasswordEncoder.getInstance();
+	}
+
+    @Override
+	protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+		auth.inMemoryAuthentication()
+			.withUser("admin").password("123456").roles("ADMIN", "USER")
+			.and()
+			.withUser("wang").password("123456").roles("USER");
+	}
+}
+```
+
+这样就有一个`admin`用户，并具有`ADMIN`，`USER`权限；有一个`wang`用户，具有`USER`权限，这里添加时不用添加`ROLE_`前缀，重新启动系统，就可以使用`admin`和`wang`用户登录了
+
+### 四、HttpSecurity，角色管理
+
+如果需要实现对资源的控制，并且对角色的管理，这里需要实现`WebSecurityConfigurerAdapter`这个类的另一个方法
+
+```java
+@Configuration
+public class MyWebSecurityConfig extends WebSecurityConfigurerAdapter {
+    /**
+	 * SpringSecurity 在5.0之后必须指定一种加密方式
+	 * 这里使用不加密
+	 * @return
+	 */
+    @Bean
+	PasswordEncoder passwordEncoder() {
+		return NoOpPasswordEncoder.getInstance();
+	}
+
+    @Override
+	protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+		auth.inMemoryAuthentication()
+			.withUser("admin").password("123456").roles("ADMIN", "USER")
+			.and()
+			.withUser("wang").password("123456").roles("USER");
+	}
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.authorizeRequests()
+            // 访问/admin/**路径，需要ADMIN角色
+            .antMatchers("/admin/**").hasRole("ADMIN")
+            // 访问/user/**路径，需要ADMIN角色或者USER角色
+            .antMatchers("/user/**").hasAnyRole("ADMIN", "USER")
+            // 除了上面定义的url，其他请求，需要登录之后才能访问
+            .anyRequest().authenticated()
+            // 开启表单登录
+            .and().formLogin()
+            // 登录页面
+            .loginPage("/login_page")
+            // 登录接口
+            .loginProcessingUrl("/login")
+            // 自定义username字段
+            .usernameParameter("user")
+            // 自定义password字段
+            .passwordParameter("pass")
+            // 登录成功之后回调
+            .successHandler((request, response, auth) -> {
+                // 当前用户信息
+                Object principal = auth.getPrincipal();
+                response.setContentType("application/json;charset=utf-8");
+                PrintWriter out = response.getWriter();
+                response.setStatus(200);
+                Map<String, Object> map = new HashMap<>(2);
+                map.put("status", 200);
+                map.put("msg", principal);
+                ObjectMapper om = new ObjectMapper();
+                out.write(om.writeValueAsString(map));
+                out.flush();
+                out.close();
+            })
+            // 登录失败之后回调
+            .failureHandler((request, response, e) -> {
+                response.setContentType("application/json;charset=utf-8");
+                PrintWriter out = response.getWriter();
+                response.setStatus(401);
+                Map<String, Object> map = new HashMap<>(2);
+                map.put("status", 401);
+
+                if (e instanceof LockedException) {
+                    map.put("msg", "账户被锁定，请联系管理员!");
+                } else if (e instanceof CredentialsExpiredException) {
+                    map.put("msg", "密码过期，请联系管理员!");
+                } else if (e instanceof AccountExpiredException) {
+                    map.put("msg", "账户过期，请联系管理员!");
+                } else if (e instanceof DisabledException) {
+                    map.put("msg", "账户被禁用，请联系管理员!");
+                } else if (e instanceof BadCredentialsException) {
+                    map.put("msg", "用户名或者密码输入错误，请重新输入!");
+                } else {
+                    map.put("msg", "登录失败!");
+                }
+
+                ObjectMapper om = new ObjectMapper();
+                out.write(om.writeValueAsString(map));
+                out.flush();
+                out.close();
+            })
+            // 退出登录接口
+            .and().logout().logoutUrl("/logout")
+            // 退出之后清理身份认证信息
+            .clearAuthentication(true)
+            // 退出之后清理session信息
+            .invalidateHttpSession(true)
+            // 可以做一些数据清理工作
+            .addLogoutHandler((request, response, auth) -> {
+
+            })
+            // 注销成功之后，业务逻辑，可以跳转页面，也可以返回json
+            .logoutSuccessHandler((request, response, auth) -> {
+                response.sendRedirect("/login_page");
+            })
+            // 表示和登录相关接口都不需要登录
+            .permitAll()
+            // 关闭csrf
+            .and().csrf().disable();
+	}
+}
+```
+
+### 五、基本方法的角色控制
+
+上面的角色控制都是基于URL的，为了更细粒度的控制，可以开启基于注解的安全配置
+
+```java
+@Configuration
+@EnableGlobalMethodSecurity(prePostEnabled = true, securedEnabled = true)
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+}
+```
+
+`prePostEnabled = true`会开启`@PreAuthorize`和`@PostAuthorize`这两个注解
+
+```java
+// 在这个方法之前进行校验，判断当前登录用户是否具有ADMIN角色
+@PreAuthorize("hasRole('ADMIN')")
+public String hello() {
+    return "hello!";
+}
+
+// 在这个方法之前进行校验，判断当前登录用户是否具有ADMIN和USER角色
+@PreAuthorize("hasRole('ADMIN') and hasRole('USER')")
+public String hello1() {
+    return "hello1!";
+}
+
+// 在这个方法之后进行校验，判断当前登录用户是否具有ADMIN或者USER角色
+@PostAuthorize("hasAnyRole('ADMIN', 'USER')")
+public String admin() {
+    return "hello admin!";
+}
+```
+
+`securedEnabled = true`会开启`@Secured`注解
+
+```java
+// 这个注解标识这个方法需要USER角色，这里需要加ROLE_前缀
+@Secured("ROLE_USER")
+public String user() {
+    return "hello user!";
+}
+```
+
+### 六、基于数据库认证
+
+整合好Mybatis
+
+需要一个User实体类，并实现`UserDetails`接口
+
+```java
+public class User implements UserDetails {
+	private Integer id;
+	private String username;
+	private String password;
+	private Boolean enable;
+	private Boolean locked;
+	private List<Role> roles;
+
+	/**
+	 * 获取当前用户的对象所有具有的角色信息
+	 * @return
+	 */
+	@Override
+	public Collection<? extends GrantedAuthority> getAuthorities() {
+		List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+		for (Role role : roles) {
+			authorities.add(new SimpleGrantedAuthority(role.getName()));
+		}
+
+		return authorities;
+	}
+
+	/**
+	 * 获取当前对象的密码
+	 * @return
+	 */
+	@Override
+	public String getPassword() {
+		return this.password;
+	}
+
+	/**
+	 * 获取当前对象的账号
+	 * @return
+	 */
+	@Override
+	public String getUsername() {
+		return this.username;
+	}
+
+	/**
+	 * 当前账户是否未过期
+	 * @return true 未过期，false已过期
+	 */
+	@Override
+	public boolean isAccountNonExpired() {
+		return true;
+	}
+
+	/**
+	 * 当前账户是否未锁定
+	 * 数据库是tinyint格式 0为false 1为true
+	 * @return true 未锁定，false锁定
+	 */
+	@Override
+	public boolean isAccountNonLocked() {
+		return this.locked;
+	}
+
+	/**
+	 * 当前账户密码是否过期
+	 * 某些系统要求用户定期修改密码，这个字段可用于这个功能
+	 * @return true 未过期， false 已过期
+	 */
+	@Override
+	public boolean isCredentialsNonExpired() {
+		return true;
+	}
+
+	/**
+	 * 当前账户是否可用
+	 * @return true 可用，false 不可用
+	 */
+	@Override
+	public boolean isEnabled() {
+		return this.enable;
+	}
+
+
+	public Integer getId() {
+		return id;
+	}
+
+	public void setId(Integer id) {
+		this.id = id;
+	}
+
+	public void setUsername(String username) {
+		this.username = username;
+	}
+
+	public void setPassword(String password) {
+		this.password = password;
+	}
+
+	public Boolean getEnable() {
+		return enable;
+	}
+
+	public void setEnable(Boolean enable) {
+		this.enable = enable;
+	}
+
+	public Boolean getLocked() {
+		return locked;
+	}
+
+	public void setLocked(Boolean locked) {
+		this.locked = locked;
+	}
+
+	public List<Role> getRoles() {
+		return roles;
+	}
+
+	public void setRoles(List<Role> roles) {
+		this.roles = roles;
+	}
+}
+```
+
+并创建一个类实现`UserDetailsService`接口
+
+```java
+@Service
+public class UserService implements UserDetailsService {
+
+	@Autowired
+	private UserMapper userMapper;
+
+	@Override
+	public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+		// 根据用户名查询用户
+		User user = userMapper.loadUserByUsername(username);
+		if (user == null) {
+			throw new UsernameNotFoundException("账户不存在!");
+		}
+        // 根据用户id查询用户所具有的角色并设置到user对象中
+		user.setRoles(userMapper.getUserRoleByUid(user.getId()));
+		return user;
+	}
+}
+```
+
+当实现了`UserDetailsService`接口，用户登录时，就会访问`loadUserByUsername`方法。该方法通过用户名，查询到user对象，如果user对象为空，则抛出一个账户不存在的异常，反之，则通过用户id查询用户所具有的角色信息，并设置到角色对象中，SpringSecurity会提供密码的校验。
+
+并将自定义`UserService`配置到`WebSecurityConfigurerAdapter`中
+
+```java
+@Configuration
+@EnableGlobalMethodSecurity(prePostEnabled = true, securedEnabled = true)
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+	@Bean
+	PasswordEncoder passwordEncoder() {
+		return NoOpPasswordEncoder.getInstance();
+	}
+
+	@Autowired
+	private UserService userService;
+
+	@Override
+	protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        // 将userService配置到WebSecurityConfig中，用户登录时就会访问loadUserByUsername方法
+		auth.userDetailsService(userService);
+	}
+
+	@Override
+	protected void configure(HttpSecurity http) throws Exception {
+		http.authorizeRequests()
+				.antMatchers("/admin/**").hasRole("admin")
+				.antMatchers("/dba/**").hasRole("dba")
+				.antMatchers("/user/**").hasRole("user")
+				.anyRequest().authenticated()
+				.and().formLogin().loginProcessingUrl("/login").permitAll()
+				.and().csrf().disable();
+	}
+```
+
+### 七、角色继承
+
+```java
+/**
+  * 角色继承
+  * dba拥有自己，admin 和 user权限
+  * admin拥有自己和user权限
+  * @return
+  */
+@Bean
+RoleHierarchy roleHierarchy() {
+    RoleHierarchyImpl roleHierarchy = new RoleHierarchyImpl();
+    String hierarchy = "ROLE_dba > ROLE_admin \n" +
+        "ROLE_admin > ROLE_user \n";
+    roleHierarchy.setHierarchy(hierarchy);
+    return roleHierarchy;
+}
+```
+
+dba就具有自己权限以及admin的权限
+
+admin就具有自己的权限以及user权限（因为dba具有admin的权限，自然就具有了user权限，因为admin具有user权限）
+
+### 八、动态权限设计
+
+现在的系统都支持动态配置角色和资源的关系，需要创建一个资源表，一个资源和角色关联表
+
+自定义`FilterInvocationSecurityMetadataSource`实现类，重写`getAttributes`方法可以确定该URL需要的角色集合
+
+```java
+@Component
+public class CustomFilterinvocationSecurityMetadataSource implements FilterInvocationSecurityMetadataSource {
+
+	@Autowired
+	private MenuMapper menuMapper;
+
+	AntPathMatcher antPathMatcher = new AntPathMatcher();
+
+	@Override
+	public Collection<ConfigAttribute> getAttributes(Object object) throws IllegalArgumentException {
+        // 获取当前的请求地址
+		String requestUrl = ((FilterInvocation) object).getRequestUrl();
+        // 获取所有的资源URL，以及该菜单需要什么权限
+		List<Menu> menus = menuMapper.getAllMenus();
+        // 遍历资源URL
+		for (Menu menu : menus) {
+            // 如果资源URL和请求地址匹配
+			if (antPathMatcher.match(menu.getPattern(), requestUrl)) {
+                // 获取该资源需要的角色
+				List<Role> roles = menu.getRoles();
+                // 组装到字符串数组中
+				String[] roleArr = new String[roles.size()];
+				for (int i = 0; i < roleArr.length; i++) {
+					roleArr[i] = roles.get(i).getName();
+				}
+				// 返回该URL需要的角色集合
+				return SecurityConfig.createList(roleArr);
+			}
+		}
+		// 如果没有找到匹配的URL，则认为该URL只需要登录就可以访问
+		return SecurityConfig.createList("ROLE_LOGIN");
+	}
+
+	@Override
+	public Collection<ConfigAttribute> getAllConfigAttributes() {
+		return null;
+	}
+
+	@Override
+	public boolean supports(Class<?> clazz) {
+		return FilterInvocation.class.isAssignableFrom(clazz);
+	}
+}
+```
+
+自定义`AccessDecisionManager`实现类，实现`decide`方法，可以确定当前角色是否具有需要访问的URL地址的权限
+
+```java
+@Component
+public class CustomAccessDecisionManager implements AccessDecisionManager {
+    /**
+      * arg0 当前登录用户信息
+      * arg1 可以获取当前请求对象
+      * arg2 就是FilterInvocationSecurityMetadataSource实现类的getAttributes()方法的返回值
+      */
+	@Override
+	public void decide(Authentication authentication, Object object, Collection<ConfigAttribute> configAttributes) throws AccessDeniedException, InsufficientAuthenticationException {
+        // 获取当前用户的角色信息
+		Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
+        // 遍历这个url需要的角色集合
+		for (ConfigAttribute attribute : configAttributes) {
+            // 如果需要登录角色并且当前用户已经登录，则返回，校验成功。
+			if ("ROLE_LOGIN".equals(attribute.getAttribute())
+					&& authentication instanceof UsernamePasswordAuthenticationToken) {
+				return;
+			}
+			// 遍历用户所具有的角色集合
+			for (GrantedAuthority authority : authorities) {
+                // 如果当前url所需要的角色和用户所具有的角色匹配成功 则返回，校验成功。
+				if (attribute.getAttribute().equals(authority.getAuthority())) {
+					return;
+				}
+			}
+
+		}
+
+		throw new AccessDeniedException("权限不足");
+	}
+
+	@Override
+	public boolean supports(ConfigAttribute attribute) {
+		return true;
+	}
+
+	@Override
+	public boolean supports(Class<?> clazz) {
+		return true;
+	}
+}
+```
+
+将这两个配置文件配到自定义的`WebSecurityConfigurerAdapter`配置文件中
+
+```java
+@Configuration
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+
+	@Bean
+	PasswordEncoder passwordEncoder() {
+		return NoOpPasswordEncoder.getInstance();
+	}
+
+    /**
+    * 通过这个类可以确定这个URL需要什么角色
+    */
+	@Bean
+	CustomFilterinvocationSecurityMetadataSource cfsm(){
+		return new CustomFilterinvocationSecurityMetadataSource();
+	}
+
+    /**
+    * 通过这个类可以确定这个URL需要的角色当前用户是否具有
+    */
+	@Bean
+	CustomAccessDecisionManager cadm() {
+		return new CustomAccessDecisionManager();
+	}
+
+	@Autowired
+	private UserService userService;
+
+	@Override
+	protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+		auth.userDetailsService(userService);
+	}
+
+    /**
+	 * 可以配置一些不需要认证的URL
+	 * @param web
+	 * @throws Exception
+	 */
+    @Override
+	public void configure(WebSecurity web) throws Exception {
+		web.ignoring().antMatchers("/css/**");
+	}
+
+	@Override
+	protected void configure(HttpSecurity http) throws Exception {
+		http.authorizeRequests()
+				.withObjectPostProcessor(new ObjectPostProcessor<FilterSecurityInterceptor>() {
+
+					@Override
+					public <O extends FilterSecurityInterceptor> O postProcess(O o) {
+                        // 配置两个类
+						o.setSecurityMetadataSource(cfsm());
+						o.setAccessDecisionManager(cadm());
+						return o;
+					}
+				})
+            	// 开启表单登录，登录接口地址/login
+				.and().formLogin().loginProcessingUrl("/login")
+            	// 成功回调
+				.successHandler((req, resp, authentication) -> {
+                        resp.setContentType("application/json;charset=utf-8");
+                        PrintWriter out = resp.getWriter();
+                        Hr hr = (Hr) authentication.getPrincipal();
+                        hr.setPassword(null);
+                        RespBean ok = RespBean.ok("登录成功!", hr);
+                        String s = new ObjectMapper().writeValueAsString(ok);
+                        out.write(s);
+                        out.flush();
+                        out.close();
+				})
+            	// 失败回调
+				.failureHandler((req, resp, exception) -> {
+                        resp.setContentType("application/json;charset=utf-8");
+                        PrintWriter out = resp.getWriter();
+                        RespBean respBean = RespBean.error("登录失败!");
+                        if (exception instanceof LockedException) {
+                            respBean.setMsg("账户被锁定，请联系管理员!");
+                        } else if (exception instanceof CredentialsExpiredException) {
+                            respBean.setMsg("密码过期，请联系管理员!");
+                        } else if (exception instanceof AccountExpiredException) {
+                            respBean.setMsg("账户过期，请联系管理员!");
+                        } else if (exception instanceof DisabledException) {
+                            respBean.setMsg("账户被禁用，请联系管理员!");
+                        } else if (exception instanceof BadCredentialsException) {
+                            respBean.setMsg("用户名或者密码输入错误，请重新输入!");
+                        }
+                        out.write(new ObjectMapper().writeValueAsString(respBean));
+                        out.flush();
+                        out.close();
+				})
+            	// permitAll()表示和登录相关接口都不需要登录
+				.permitAll()
+            	// 关闭csrf
+				.and().csrf().disable()
+				.exceptionHandling()
+                // 没有认证时，在这里处理结果，不要重定向
+				.authenticationEntryPoint((req, resp, authException) -> {
+                    resp.setContentType("application/json;charset=utf-8");
+                    resp.setStatus(401);
+                    PrintWriter out = resp.getWriter();
+                    RespBean respBean = RespBean.error("访问失败!");
+                    if (authException instanceof InsufficientAuthenticationException) {
+                        respBean.setMsg("请求失败，请联系管理员!");
+                    }
+                    out.write(new ObjectMapper().writeValueAsString(respBean));
+                    out.flush();
+                    out.close();
+                });;
+	}
+```

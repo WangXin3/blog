@@ -1,0 +1,125 @@
+---
+title: 使用docker快速搭建redis-cluster集群
+date: '2021-01-03'
+tags: ['Docker', 'Redis']
+draft: false
+summary: '使用docker快速搭建redis-cluster集群'
+---
+
+## 1、安装docker环境
+
+略
+
+## 2、准备创建容器
+
+因为redis-cluster集群模式最起码需要6个redis节点，做成三主三从模式，我们使用命令快速创建6个docker容器
+
+```shell
+for port in $(seq 7001 7006); \
+do \
+mkdir -p /mydata/redis/node-${port}/conf
+touch /mydata/redis/node-${port}/conf/redis.conf
+
+cat << EOF >> /mydata/redis/node-${port}/conf/redis.conf
+port ${port}
+cluster-enabled yes
+cluster-config-file nodes.conf
+cluster-node-timeout 5000
+cluster-announce-ip 192.168.0.112
+cluster-announce-port ${port}
+cluster-announce-bus-port 1${port}
+appendonly yes
+EOF
+
+docker run -p ${port}:${port} -p 1${port}:1${port} --name redis-${port} \
+-v /mydata/redis/node-${port}/data:/data \
+-v /mydata/redis/node-${port}/conf/redis.conf:/etc/redis/redis.conf \
+-d redis:5.0.7 redis-server /etc/redis/redis.conf; \
+done
+```
+
+## 3、创建集群
+
+随便进入到其中一个容器，使用如下命令
+
+```shell
+docker exec -it redis-7001 /bin/bash
+```
+
+再使用命令，快速创建集群，ip需要换成你们自己的ip。
+
+```java
+redis-cli --cluster create 192.168.0.112:7001 192.168.0.112:7002 192.168.0.112:7003 192.168.0.112:7004 192.168.0.112:7005 192.168.0.112:7006 --cluster-replicas 1
+```
+
+执行改命令之后，会出现下面的详细的集群信息，可以看到7001，7002，7003为M，也就是Master节点，7004为7002的从节点，7005为7003的从节点，7006为7001的从节点，随后输入yes，即可确认创建集群。
+
+```shell
+>>> Performing hash slots allocation on 6 nodes...
+Master[0] -> Slots 0 - 5460
+Master[1] -> Slots 5461 - 10922
+Master[2] -> Slots 10923 - 16383
+Adding replica 192.168.0.112:7005 to 192.168.0.112:7001
+Adding replica 192.168.0.112:7006 to 192.168.0.112:7002
+Adding replica 192.168.0.112:7004 to 192.168.0.112:7003
+>>> Trying to optimize slaves allocation for anti-affinity
+[WARNING] Some slaves are in the same host as their master
+M: 0f07e232663603d28e9d042efbbe46a3b30adf59 192.168.0.112:7001
+   slots:[0-5460] (5461 slots) master
+M: e720b7f43938642529980b16d1a528d21dd09d11 192.168.0.112:7002
+   slots:[5461-10922] (5462 slots) master
+M: 771e51f6b0aba5e5b6d0d5a9ae6f6173dc68b5ba 192.168.0.112:7003
+   slots:[10923-16383] (5461 slots) master
+S: 02b328977da2c153f093f0eec6291abe6ef830fa 192.168.0.112:7004
+   replicates e720b7f43938642529980b16d1a528d21dd09d11
+S: 2393750e5628364850a5c539c7c4f4941e00279c 192.168.0.112:7005
+   replicates 771e51f6b0aba5e5b6d0d5a9ae6f6173dc68b5ba
+S: 237687a3a1e8f04e3fb1fa202d796b3fdf2f8459 192.168.0.112:7006
+   replicates 0f07e232663603d28e9d042efbbe46a3b30adf59
+Can I set the above configuration? (type 'yes' to accept):
+
+```
+
+输入完yes之后，可以看到集群创建成功，7001分配的槽索引为0-5460，7002分配的槽索引为5461-10922，7003分配的槽索引为10923-16383，共16384个槽，达到了数据分片。
+
+```shell
+>>> Nodes configuration updated
+>>> Assign a different config epoch to each node
+>>> Sending CLUSTER MEET messages to join the cluster
+Waiting for the cluster to join
+...
+>>> Performing Cluster Check (using node 192.168.0.112:7001)
+M: 0f07e232663603d28e9d042efbbe46a3b30adf59 192.168.0.112:7001
+   slots:[0-5460] (5461 slots) master
+   1 additional replica(s)
+S: 237687a3a1e8f04e3fb1fa202d796b3fdf2f8459 192.168.0.112:7006
+   slots: (0 slots) slave
+   replicates 0f07e232663603d28e9d042efbbe46a3b30adf59
+M: 771e51f6b0aba5e5b6d0d5a9ae6f6173dc68b5ba 192.168.0.112:7003
+   slots:[10923-16383] (5461 slots) master
+   1 additional replica(s)
+S: 2393750e5628364850a5c539c7c4f4941e00279c 192.168.0.112:7005
+   slots: (0 slots) slave
+   replicates 771e51f6b0aba5e5b6d0d5a9ae6f6173dc68b5ba
+M: e720b7f43938642529980b16d1a528d21dd09d11 192.168.0.112:7002
+   slots:[5461-10922] (5462 slots) master
+   1 additional replica(s)
+S: 02b328977da2c153f093f0eec6291abe6ef830fa 192.168.0.112:7004
+   slots: (0 slots) slave
+   replicates e720b7f43938642529980b16d1a528d21dd09d11
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+
+```
+
+## 4、other
+
+在某一主节点宕机之后，其所对用的从节点会被提升为主节点，而后宕机的主节点在恢复之后，会成为从节点。
+
+## 联系我
+
+邮箱：91907@163.com
+
+微信（`需要base64解码`）：V2FuZ1hYaW4z

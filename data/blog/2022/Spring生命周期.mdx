@@ -1,0 +1,46 @@
+---
+title: Spring生命周期
+date: '2022-12-03'
+tags: ['Spring']
+draft: false
+summary: 'Spring生命周期'
+---
+
+1. 实例化
+2. 设置对象属性
+3. 检查Aware的相关接口并设置依赖
+4. BeanPostProcessor前置处理
+5. 是否实现了InitializingBean接口
+6. 是否配置自定义的initMethod方法
+7. BeanPostProcessor后置处理
+8. 注册Destruction接口
+9. 如果实现了DisposableBean接口，
+10. 是否配置了自定义的DestoryMethod方法
+
+1、实例化：将这个Bean对象创建出来，类型new xxx();
+
+2、属性赋值：给xxx对象的属性赋值，通过BeanDefinition给属性赋值，解决了循环依赖问题
+
+Aware相关接口：
+
+第一类：BeanFactoryAware、BeanNameAware、BeanClassLoaderAware
+
+第二类：EnvironmentAware、EmbeddedValueResolverAware 、ApplicationContextAware等
+
+3-7、初始化、7完成之后，Bean就可以正常使用了，可以通过BeanFactory根据获取Bean对象
+
+8-10、销毁相关：Spring容器关闭的时候调用销毁相关方法，一般不用写逻辑。
+
+两个生命周期接口
+
+InitializingBean：初始化开始之后执行
+
+DisposableBean：销毁之后执行
+
+两个影响所有Bean的接口
+
+InstantiationAwareBeanPostProcessor：实例化前后执行
+
+BeanPostProcessor：初始化前后执行
+
+InstantiationAwareBeanPostProcessor是BeanPostProcessor的子接口

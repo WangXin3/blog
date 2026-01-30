@@ -1,0 +1,57 @@
+---
+title: 学习equals()和hashCode()
+date: '2019-12-20'
+tags: ['Java']
+draft: false
+summary: '学习equals()和hashCode()'
+---
+
+### 1.equals()作用
+
+equals() 的作用是 **用来判断两个对象是否相等**。
+
+源码：
+
+```java
+public boolean equals(Object obj) {
+    return (this == obj);
+}
+```
+
+这个方法是定义在Object类中的，意味着所有的Java类都可以调用equals()方法。也就是查看两个对象的地址是否一致，从而返回true或false。
+
+会有两种情况
+
+- 若类，没有重写equals()方法，则会调用Object父类的equals()方法，比较两个对象的地址值。
+- 若类，重写equals()方法，则会自定义该对象的相等方法，相等则返回true，反之返回flase。
+
+### 2.equals()和==的区别
+
+- 如果该类重写了equals()方法，则该对象调用equals()方法是通过自定义equals()方法区实现比较的，而==的作用是比较两个类的地址
+- 如果该类没有重写equals()方法，则该类调用equals()方法和两个对象使用`==`效果是一样的。
+
+### 3.hashCode()作用
+
+hashCode()的作用是获取哈希码，实际上返回一个int整数，这个哈希码的作用是确定该对象在哈希表中的索引位置。hashCode()也是定义在Object类中的，也就是Java所有类都可以调用hashCode()方法。
+
+hashCode()方法只有在对象加入散列表时会被调用，根据hashCode()方法获取到该对象的散列码，然后加入到散列表，然后查询对象时会根据散列码去散列表查询对象，这样的速度很快。
+
+散列表：如 HashSet, Hashtable, HashMap等等这些本质是散列表
+
+### 4.hashCode() 和 equals() 的关系
+
+1. 该对象不会用于散列表
+
+   那么hashCode() 和 equals()是没有任何关系的，如判断两个对象是否相等，则会去调用equals()方法。
+
+2. 该对象会用于散列表
+
+   那么hashCode() 和 equals()是有关联的
+
+   > 想等：这里的相等是指，通过equals()比较两个对象时返回true。
+   - 如果两个对象**相等**，那么它们的hashCode()值一定相同。
+   - 如果两个对象hashCode()相等，但是他们并不一定**相等**。
+
+3. 所以当对象用户散列表时，必须同时重写hashCode()方法和equals()方法，否则equals()方法是没有用的。如果只有equals()方法判断两个对象相等，而hashCode()值不同，散列表则会认为两个对象不同。
+
+4. 只有两个对象equals()方法和hashCode()值都相等时，散列表才会判断为相等。

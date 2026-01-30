@@ -1,0 +1,481 @@
+---
+title: SpringMVC常用注解
+date: '2019-05-02'
+tags: ['Java', 'SpringMVC']
+draft: false
+summary: 'SpringMVC常用注解'
+---
+
+####1、@Controller
+
+用于指示Spring类是一个控制器类。
+
+---
+
+#### 2、@RequestMapping
+
+用于配置映射路径，如果只有一个value属性时，value可省略不写
+
+```java
+// 用于指示Spring类是一个控制器类。
+@Controller
+// 用于配置映射路径
+@RequestMapping（“/test”）
+public class Test{
+	// 用于配置映射路径
+	// 访问地址：http://localhost:8080/项目名/test/hello
+	@RequestMapping（“/hello”）
+    public String hello(){
+    	return "Hello World!";
+    }
+}
+```
+
+---
+
+#### 3、@RequestParam
+
+用于将指定的请求参数赋值给方法中的形参
+
+---
+
+#### 4、@PathVariable
+
+请求URL中的动态参数
+
+```java
+@RequestMapping("/pathVariableTest/{id}")
+public void pathVariableTest(@PathVariable Integer id)
+// 如果url后面最后id传过来的值为"666"，那么通过@PathVariable绑定，方法中id形参的值就被赋值为"666"
+```
+
+---
+
+#### 5、@MatrixVariable
+
+此注解扩展了URL请求地址的功能，可以接收多个变量，用”；“（分号）分隔，可以用于多条件查询
+
+默认在SpringMVC中是不启用的，需要手动启用
+
+```xml
+<!-- 启用@MatrixVariable注解 -->
+<mvc:annotation-driven enable-matrix-variables="true"/>
+```
+
+```java
+// 映射地址 /test/{id};name=wang;age=21/{randNum};q=1;w=2
+@RequestMapping("/test/{id}")
+public void test(@PathVariable Integer id,
+                @MatrixVariable(name="name",pathVar="id") String name,
+                @MatrixVariable(name="age",pathVar="id") Integer age,
+                @PathVariable Integer randNum,
+                @MatrixVariable(name="q",pathVar="randNum") Integer q,
+                @MatrixVariable(name="w",pathVar="randNum") Integer w)
+// @MatrixVariable注解
+// name属性：指定请求参数绑定的名称，省略则绑定同名参数
+// pathVar属性：所在同级路径变量的名称
+```
+
+---
+
+#### 6、@CrossOrigin
+
+用于处理SpringMVC中跨域请求问题
+
+```java
+// 超时时间 单位/秒
+@CrossOrigin(maxAge=3600)
+@Controller
+public class Test{
+    @CrossOrigin(origins="http://www.baidu.com")
+    @RequestMapping("/hello")
+    public String hello(){
+        // ......
+    }
+}
+```
+
+@CrossOrigin注解分别用于类上和方法上，SpringMVC会合并两个一起使用
+
+现在Test控制器的hello方法可以处理来自”http://www.baidu.com”的跨域请求
+
+也可以把“@CrossOrigin(origins="http://www.baidu.com")”这个写在类上，说明这个Test控制器的所有方法都可以处理来自”http://www.baidu.com”的跨域请求
+
+---
+
+#### 7、@RequestHeader
+
+用于将请求的头信息数据映射到功能处理的方法的参数上
+
+```java
+@RequestMapping("/test")
+public void test(@RequestHeader("User-Agent") String userAgent,
+                 @RequestHeader("Accept") String[] accepts){
+	//......
+}
+```
+
+---
+
+#### 8、@CookieValue
+
+用于将请求的Cookie数据映射到功能处理的方法参数上
+
+```java
+// 请求方法时 @CookieValue注解将cookie中名为message的值 传入到 message变量中
+// 如果cookie中没有message时 则使用defalutValue配置的值
+public void test(@CookieValue(name="message",defalutValue="") String message){
+    //......
+}
+```
+
+---
+
+#### 9、@RequestAttribute
+
+由请求方法、过滤器或拦截器创建或预先存在于request作用域中的属性，将该属性传到方法的参数上
+
+```java
+public void test(@RequestAttribute(name="username") String username)
+```
+
+---
+
+#### 10、@SessionAttribute
+
+由请求方法、过滤器或拦截器创建或预先存在于session作用域中的属性，将该属性传到方法的参数上
+
+```java
+public void test(@SessionAttribute(name="username") String username)
+```
+
+---
+
+#### 11、@SessionAttributes
+
+只能用于类上，无法用于方法上
+
+用于让我们有选择地指定Model中的那些属性转存到HttpSession对象当中
+
+```java
+// 写法一
+@SessionAttributes("demo")
+public class test{
+    // ......
+}
+
+// 写法二
+@SessionAttributes(type={Demo.class}, value="user")
+public class test{
+    // ......
+}
+
+// 写法三
+@SessionAttributes(type={Demo.class, DemoOne.class}, value={"user", "demoOne"})
+public class test{
+    // ......
+}
+```
+
+---
+
+#### 12、@ModelAttribute
+
+用于将请求参数绑定到对象。
+
+1. @ModelAttribute(name="")用于返回具体类的方法
+
+   用此注解的方法会先于请求的方法执行，用注解方法的返回值就赋给Model属性的值
+
+   ```java
+   @Controller
+   public class test{
+       // 此方法会先于请求的方法执行
+       @ModelAttribute(name="username")
+       public String testOne(@RequestParam("username") String username){
+           // 返回值直接给Model对象的username属性赋值
+           return username;
+       }
+
+       @RequestMapping("/hello")
+       public String hello(){
+           // 当访问/hello链接时 会先访问testOne方法，然后才访问hello方法
+       }
+   }
+   ```
+
+2. @ModelAttribute用于返回具体类的方法
+
+   注解没有指定name，取返回值类型（首字符小写）做为name，属性值为方法返回值
+
+   ```java
+   @ModelAttribute
+   public User testOne(@RequestParam("loginname") String username,
+                       @RequestParam("password") String password){
+       // User类自行创建 此处举例
+       User user = new User();
+       user.setUsername(username);
+       user.setPassword(password);
+       // 此处注解没有指定name，那么返回值是User类型，那么model的属性就是user
+       return user;
+   }
+
+   @RequestMapping(value="/hello")
+   public String hello() {
+   	// 当访问/hello链接时 会先访问testOne方法，然后才访问hello方法
+   }
+   ```
+
+3. @ModelAttribute用于void返回值的方法
+
+   无返回值，无法自动给model对象设置属性名称和值，只能通过model.addAttribute()实现
+
+   ```java
+   @ModelAttribute
+   public void testOne(@RequestParam("username") String username,
+                       @RequestParam("password") String password,
+                       Model model){
+       model.addAttribute("username", username);
+       model.addAttribute("password", password);
+   }
+
+   @RequestMapping(value="/hello")
+   public String hello() {
+   	// 当访问/hello链接时 会先访问testOne方法，然后才访问hello方法
+   }
+   ```
+
+4. @ModelAttribute和@RequestMapping同时用于一个方法
+
+   方法返回的不是视图名，而是model的属性值，视图名是@RequestMapping注解的name值
+
+   ```java
+   @RequestMapping(name="/testOne")
+   @ModelAttribute(name="username")
+   public String testOne() {
+       return "admin";
+       // 这里返回的并不是一个视图名 而是model属性的值
+       // 视图名称是@RequestMapping注解中的testOne
+       // 执行完此方法会跳转到 testOne.jsp 页面
+   }
+   ```
+
+5. @ModelAttribute用于一个方法的参数
+
+   此方法最为常用，可以将前台页面的值回传到另一个页面
+
+   ```java
+   @RequestMapping(value="/testOne")
+   public String testOne(@ModelAttribute User user) {
+       // 加了@ModelAttribute注解的参数值会自动加入到model对象的同名属性中
+       return "hello";
+       // 此处hello为视图名
+   }
+   ```
+
+---
+
+#### 13、@RequestBody
+
+通过使用HandlerAdapter配置的HttpMessageConverter来解析JSON或XML数据，然后绑定到相应的 Bean 上。
+
+自定义HttpMessageConverter此处不详解，请移步其他优秀博客。
+
+SpringMVC提供了处理JSON格式请求/响应的MappingJackson2HttpMessageConverter
+
+```json
+{ "username": "admin", "password": "123456" }
+// 将此json通过Ajax请求getJson方法
+```
+
+```java
+// @RequestBody根据json数据，转换成对应的Object
+@RequestMapping(value="/getUserJson")
+public void getUserJson(@RequestBody User user, HttpServletResponse response) throws Exception{
+    // ObjectMapper类是Jackson库的主要类。它提供一些功能将Java对象转换成对应的JSON格式的数据
+    ObjectMapper mapper = new ObjectMapper();
+    // 输出user对象
+    System.out.println(user);
+    //重新设置username和password
+    user.setUsername("lisi");
+    user.setPassword("654321");
+    //设置编码
+    response.setContentType("text/html;charset=UTF-8");
+    // 将user对象转换成json写出到客户端
+    response.getWriter().println(mapper.writeValueAsString(user));
+}
+```
+
+---
+
+#### 14、@ResponseBody
+
+将请求方法返回的对象通过适当的HttpMessageConverter转换为指定格式（常用JSON）后，将某种数据格式（常用JSON）返回到客户端。
+
+```java
+@RequestMapping(value="/getJson")
+// @ResponseBody会将集合数据转换json格式返回客户端
+@ResponseBody
+public Object getJson() {
+    List<Book> list = new ArrayList<Book>();
+    list.add(new user("lisi","123456"));
+    list.add(new user("zhangsan","654321"));
+    return list;
+}
+```
+
+---
+
+#### 15、@RestController
+
+使用此注解的类首先是一个Controller类，类中所有使用了@RequestMapping注解的方法都默认使用了@ResponseBody注解
+
+---
+
+#### 16、@ResponseStatus
+
+此注解是处理异常的的最简单的方式，可以用于类上或者方法上，用于类上时，该类通常为异常类
+
+使用时，先声明一个自定义异常类，在类上加上@ResponseStatus注解。当抛出该自定义异常时，@ResponseStatus注解的code属性（http状态码）和reason属性（异常信息）将返回给浏览器。
+
+```java
+// 如果没有使用code属性，说明该异常可以被http任何状态调用
+@ResponseStatus(reason="自定义异常具体信息")
+public class MyException extends RuntimeException{
+    // ...
+}
+```
+
+```java
+@Controller
+public class test{
+    @RequestMapping("/hello")
+    public String hello() throws Exception{
+        try{
+            int i = 10/0;
+            return "success";
+        } catch(Exception e){
+            throw new MyException();
+            // 当访问/hello方法时 如果出现异常 则抛出MyException自定义异常
+            // 如果抛出MyException该自定义异常 将注解中的reason属性值返回给浏览器
+        }
+    }
+}
+```
+
+---
+
+#### 17、@ExceptionHandle
+
+此注解用于方法之上
+
+定义一个BaseController类，让所有Controller继承此类，用此类处理所有Controller的异常
+
+```java
+public class BaseController {
+    // value属性可以指定 异常类型
+    // value值为Exception 说明此方法可以处理所有Exception类型的异常
+    @ExceptionHandler(value = Exception.class)
+    public ModelAndView defaultErrorHandler(Exception e) throws Exception {
+        ModelAndView mav = new ModelAndView();
+        // 设置异常信息
+        mav.addObject("ex", e);
+        // 设置跳转异常处理页面
+        mav.setViewName("error");
+        return mav;
+    }
+}
+```
+
+定义一个UserController，继承BaseController
+
+```java
+@Controller
+public class UserController extends BaseController{
+	// 访问/login链接
+	@RequestMapping("/login")
+	public String login(String username) throws Exception{
+		if(username == null ){
+			throw new NullPointerException("用户名不存在!");
+		}
+		return "success";
+	}
+}
+```
+
+访问/login链接，如果username为空，则抛出NullPointerException，会被父类中带有@ExceptionHandler注解的方法根据指定异常类型处理。
+
+---
+
+#### 18、@ControllerAdvice
+
+该注解使用了@Component注解，可以被Spring容器扫描到。扫描到之后会将用此注解的类的内部使用@ExceptionHandler、@InitBinder、@ModelAttribute注解的方法应用到所有的请求处理方法上。最常用@ExcetionHandler，其他两个作用不大。
+
+```java
+// 此类会被Spring容器扫描
+@ControllerAdvice
+public class MyExceptionHandler {
+	// 处理Exception类型异常
+	@ExceptionHandler(value = Exception.class)
+    // 方法参数可以有 HttpServletResponse、HttpServletRequest、Model、异常实例等，此处为异常实例
+    // 返回可以是一段JSON、一个ModelAndView、一个逻辑视图名等
+    public ModelAndView errorHandler1(Exception e) throws Exception {
+        ModelAndView mav = new ModelAndView();
+        mav.addObject("ex", e);
+        mav.setViewName("error");
+        return mav;
+    }
+
+	// 处理MyException自定义异常
+	@ExceptionHandler(value = MyException.class)
+	@ResponseBody
+    public Object errorHandler2(Exception e) throws Exception {
+        // 创建返回对象Map并设置属性，会被@ResponseBody注解转换为JSON返回
+        Map<String, Object> map = new HashMap<>();
+        map.put("code", 100);
+        map.put("message", e.getMessage());
+        map.put("data", "请求失败");
+        return map;
+    }
+}
+```
+
+```java
+// 自定义异常类
+public class MyException extends RuntimeException {
+
+}
+```
+
+```java
+// Controller类
+@Controller
+public class TestController{
+	@RequestMapping("/hello")
+	public String hello() throws Exception{
+		// 此异常将被MyExceptionHandler类的errorHandler1方法捕获
+        int i = 5/0;
+		return "hello";
+	}
+
+	@RequestMapping("/world")
+	public String world() throws Exception{
+		try {
+			int i = 5/0;
+			return "world";
+		} catch (Exception e) {
+			e.printStackTrace();
+			// 此异常将被MyExceptionHandler类的errorHandler2方法捕获
+			throw new MyException("呀，出异常了!");
+		}
+	}
+}
+```
+
+---
+
+#### 19、@RestControllerAdvice
+
+该注解使用@ControllerAdvice和@ResponseBody注解，使用此注解的类会被看作是一个ControllerAdvice，而该类中所有使用@ExceptionHandler注解的方法都默认使用了@ResponseBody注解
+
+---

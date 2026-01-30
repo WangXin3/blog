@@ -1,0 +1,280 @@
+---
+title: SpringDataJpa小结
+date: '2019-08-23'
+tags: ['SpringDataJpa']
+draft: false
+summary: 'SpringDataJpa小结'
+---
+
+### Jpa使用
+
+一般继承两个接口
+
+- `JpaRepository<Bean类, Bean类主键类型>` 简单的增删改查
+- `JpaSpecificationExecutor<Bean类>` 复杂的条件查询
+
+常用方法
+
+```java
+getOne() // 根据主键Id查询 返回的是实体对象的代理对象 不建议用
+findById().get() // 根据主键Id查询 返回实体对象
+Optional<T> findOne(Example<User>) // 根据Example条件查询 返回实体对象
+Optional<T> findOne(Specification<User>)// 根据Specification条件查询 返回实体对象
+findAllById(Iterable<ID> iterable) // 根据Id集合查询数据 返回数据集合
+save(T) // 无主键 为插入数据 有主键 为更新数据
+delete(T) // 删除数据
+deleteById(Id) // 根据Id删除数据
+```
+
+### 常用实体类注解
+
+- `@Entity` 代表该类为一个实体
+- `@Table(name = "映射到数据库表名")` 代表该类和数据库映射
+- `@Id` 代表该属性为数据库表中的主键
+- `@GeneratedValue(strategy = GenerationType.IDENTITY)` 主键生成策略
+  - `GenerationType.IDENTITY` 主键自增
+- `@Column(name = "role_id")` 表示该属性映射到数据库的字段名
+
+### 四种查询方式
+
+#### 一：使用继承的接口中的定义好的方法查询
+
+#### 二：jpql语句的查询
+
+1. jpql ： jpa query language （jpq查询语言）
+
+2. 特点： 语法或关键字和sql语句类似，查询的是类和类中的属性
+
+3. 使用： 需要将jpql语句通过@Query()注解配置到接口方法上
+   1. ```java
+      // 参数赋值方式一
+      // 注意这里的T为对象名称 id为对象属性名 age也为对象属性名 而非数据库字段名
+      // 赋值的时候，默认的情况下，占位符的位置需要和方法参数中的位置保持一致
+      @Query(value="select * from T where id = ? and age = ?")
+      T findByTId(Long id, int age);
+      ```
+
+   2. ```java
+      // 参数赋值方式二
+      // ? 索引的方式，指定此占位的取值来源
+      @Query(value="select * from T where id = ?2 and age = ?1")
+      T findByTId(int age, Long id);
+      ```
+
+   3. ```java
+      // 参数赋值方式三
+      // 参数名匹配查询 使用格式 “ :参数名称 ”的方式
+      @Query(value="select * from T where id = :id and age = :age")
+      T findByTId(@Param("age") int age, @Param("id") Long id);
+      ```
+
+#### 三：sql语句的查询
+
+1.  还是使用@Query注解进行查询
+
+2.  需要在@Query中配置nativeQuery 属性，默认为false使用jpql查询，但要使用sql查询需要设置为true
+
+3.  ```java
+    // 使用nativeQuery = true注明，使用sql查询
+    @Query(value="select * from 表名 where 字段 like ?1", nativeQuery = true)
+    // 模糊查询返回的是一个list
+    List<Object []> findSql(String name);
+    ```
+
+#### 四：方法名称规则查询
+
+1.  是对jpql查询，更加深入一层的封装
+2.  我们只需要按照SpringDataJpa提供的方法名称规则定义方法，不需要再配置jpql语句，完成查询
+3.  findBy开头： 代表查询
+4.  对象中属性名称（首字母大写）
+5.  根据属性名称进行查询
+
+### Specifications动态查询
+
+`JpaSpecificationExecutor<T>` 方法列表
+
+```java
+// 查询单个对象
+T findOne(Specification<T> spec);
+
+// 查询列表
+List<T> findAll(Specification<T> spec);
+
+// 查询全部，分页
+// pageable：分页参数
+// 返回值：分页pageBean（page：是springdatajpa提供的）
+Page<T> findAll(Specification<T> spec, Pageable pageable);
+
+// 查询列表
+// Sort：排序参数
+List<T> findAll(Specification<T> spec, Sort sort);
+
+// 统计查询
+long count(Specification<T> spec);
+```
+
+#### 条件查询示例
+
+```java
+Specification<T> spec = (Specification<T>) (root, criteriaQuery, criteriaBuilder) -> {
+    // 获取根对象中的属性
+    Path<Object> userNmae = root.get("userNmae");
+    // 查询方式
+    Predicate pred = criteriaBuilder.equal(userNmae, "李四");
+    return pred;
+};
+
+dao.findAll(spec);
+```
+
+#### 多条件查询示例
+
+```java
+Specification<T> spec = (Specification<T>) (root, criteriaQuery, criteriaBuilder) -> {
+    // 获取根对象中的属性
+    Path<Object> userNmae = root.get("userNmae");
+    Path<Object> custIndustry = root.get("custIndustry");/
+
+    // 1.构造客户名的精准匹配查询
+    Predicate p1 = criteriaBuilder.equal(userNmae, "李四");
+    // 2.构造所属行业的精准匹配查询
+    Predicate p2 = criteriaBuilder.equal(custIndustry, "it教育");
+    //3.将多个查询条件组合到一起
+    // 与关系：满足条件一并且满足条件
+    Predicate and = criteriaBuilder.and(p1, p2);
+    // 或关系：满足条件一或满足条件二即可
+    // Predicate and = criteriaBuilder.or(p1, p2);
+    return pred;
+};
+
+dao.findAll(spec);
+```
+
+#### 查询并按指定字段排序示例
+
+```java
+Specification<T> spec = (Specification<T>) (root, criteriaQuery, criteriaBuilder) -> {
+    // 获取根对象中的属性
+    Path<Object> userNmae = root.get("userNmae");
+    // 查询方式
+    Predicate pred = criteriaBuilder.equal(userNmae, "李四");
+    return pred;
+};
+// 按照特定字段降序排序
+Sort sort = new Sort(Sort.Direction.DESC, "字段");
+dao.findAll(spec,sort);
+```
+
+#### 分页查询示例
+
+```java
+// spec构造条件同上边示例一样
+// 关键在于PageRequest.of(page, size)
+// page：为要查询第几页
+// size：为每页查询多少条
+Page<T> page = dao.findAll(spec, PageRequest.of(1, 20));
+// 得到数据集合列表
+List<T> content = page.getContent();
+// 得到总条数
+long totalElements = page.getTotalElements();
+// 得到总页数
+int totalPages = page.getTotalPages();
+```
+
+### 多表操作
+
+#### 一对多配置
+
+Customer 客户 一方
+Linkman 联系人 多方
+
+一的一方 放弃外键维护权
+
+一个客户可以有多个联系人 一个联系只能从属于一个客户
+
+```java
+Customer对象
+其他属性省略
+/**
+ * 一的一方 放弃外键维护权
+ *      mappedBy：对方配置关系的属性名称
+ * cascade : 配置级联（可以配置到设置多表的映射关系的注解上）
+ *      CascadeType.all         : 所有
+ *                  MERGE       : 更新
+ *                  PERSIST     : 保存
+ *                  REMOVE      : 删除
+ *  默认懒加载
+ */
+@OneToMany(mappedBy = "customer",cascade = CascadeType.ALL)
+private Set<LinkMan> linkMans = new HashSet<>();
+```
+
+```java
+Linkman对象
+其他属性省略
+/**
+ * 配置联系人到客户的多对一关系
+ *     使用注解的形式配置多对一关系
+ *      1.配置表关系
+ *          @ManyToOne : 配置多对一关系
+ *              targetEntity：对方的实体类字节码
+ *      2.配置外键（中间表）
+ *
+ * 配置外键的过程，配置到了多的一方，就会在多的一方维护外键
+ *  默认立即加载
+ *	fetch : 配置关联对象的加载方式
+ *          EAGER   ：立即加载
+ *          LAZY    ：延迟加载
+ * @JoinColumn配置外键属性
+ *		name： 外键名
+ *		referencedColumnName： 参考主表的主键
+ */
+@ManyToOne(targetEntity = Customer.class,fetch = FetchType.LAZY)
+@JoinColumn(name = "lkm_cust_id",referencedColumnName = "cust_id")
+private Customer customer;
+```
+
+#### 多对多
+
+被选择的一方放弃维护权
+
+Role 角色
+
+User 用户
+
+一个用户可以有多个角色， 一个角色可以被多个用户选择，所以用户和角色是多对多关系
+
+```java
+Role对象
+其他属性省略
+/**
+ * 被选择的一方放弃维护主键
+ */
+@ManyToMany(mappedBy = "roles")
+private Set<User> users = new HashSet<>();
+```
+
+```java
+User对象
+其他属性省略
+/**
+ * 配置多对多
+ * cascade级联操作
+ *
+ * JoinTable 中间表
+ * joinColumns 配置当前对象在中间表的外键
+ *		JoinColumn			配置当前对象在中间表的外键
+ *      	name 				 	中间表的外键名
+ *      	referencedColumnName 	参照当前主表的主键
+ *
+ *  	inverseJoinColumns 	配置对方对象在中间表的外键
+ *			name 				 	中间表的外键名
+ *			referencedColumnName 	参照对方主表的主键
+ */
+@ManyToMany(targetEntity = Role.class, cascade = CascadeType.ALL)
+@JoinTable(
+        joinColumns = {@JoinColumn(name = "sys_user_id", referencedColumnName = "user_id")},
+        inverseJoinColumns = {@JoinColumn(name = "sys_role_id", referencedColumnName = "role_id")}
+)
+private Set<Role> roles = new HashSet<>();
+```

@@ -1,0 +1,220 @@
+---
+title: Mapper.xml使用
+date: '2019-05-02'
+tags: ['Java', 'MyBatis']
+draft: false
+summary: 'MyBatis XML'
+---
+
+#### 常用元素
+
+- select：映射查询语句
+- insert：映射插入语句
+- update：映射更新语句
+- delete：映射删除语句
+- sql：可被其他语句引用的可重用语句块
+- cache：给定命名空间的缓存配置
+- chche-ref：其他命名空间缓存配置的引用
+- resultMap：最复杂也是最强大的元素，用来描述如何从数据库结果集中加载对象
+
+---
+
+#### ${ } 和 #{ } 的区别？
+
+"#{ }"：用于传递查询的参数，一般用于从dao层传递一个string或者其他的参数过来，mybatis对这个参数会进行加引号的操作，将参数转变为一个字符串。 （可以有效防止sql注入）
+
+"${ }"：mybatis对这个参数不会进行任何处理，直接生成sql语句，一般用于ORDER BY 之后。
+
+示例：
+
+```xml
+SELECT * FROM employee WHERE name=#{name}
+<!-- 我们会从dao传一个参数，比如jack过来，mybatis生成对应的sql为： -->
+SELECT * FROM employee WHERE name="jack"
+
+<!-- ############################################################ -->
+
+SELECT * FROM employee ORDER BY ${salary}
+<!-- 一般用于ORDER BY的后面，不会进行任何的处理，直接生成sql语句，生成sql为： -->
+SELECT * FROM employee ORDER BY salary
+```
+
+总结：我们一般推荐使用的是#{ }，不使用${ }的原因如下：
+
+- 会引起sql注入，因为${ }会直接参与sql编译
+- 会影响sql语句的预编译，因为 ${ } 仅仅为一个纯碎的 string 替换，在动态 SQL 解析阶段将会进行变量替换
+
+---
+
+####select元素常用属性描述如下
+
+- id：在命名空间的唯一标识符，可以i被用来引用这个语句
+- parameterType：入参类型（完全限定名或别名）
+- resultType：返回类型（完全限定名或别名）
+- resultMap：它可以将查询到的复杂数据（比如查询到几个表中数据）映射到一个结果集当中
+
+---
+
+insert、update、delete元素常用属性如下（很多同select元素属性）：
+
+- useGeneratedKeys：（仅对insert和update有用），当insert或update数据库某条结果时，返回其主键（一般都是id），默认值为false
+- keyProperty：（仅对insert和update有用）唯一标记一个属性，用于接收insert或update之后返回的主键值，如果希望的到多个生成的列，可以用逗号分隔
+- keyColumn：（仅对insert和update有用）通过生成的键值设置表中的列名，当主键不是表中第一列时需要设置。如果希望得到多个生成的列，也可以用逗号分隔
+- statementType：可用STATEMENT、PREPARED（预编译）、CALLABLE（存储过程）。默认为PREPARED
+
+如果数据库支持生成主键的字段（如MySql和SqlServer）可以使用userGeneratedKeys=“true”，然后再把keyProperty设置到目标属性上就行了（一般都是主键id）
+
+对于不支持主键自增的数据库（比如Oracle）来说，有另外一个来获取主键
+
+```xml
+<insert id="insertUser">
+	<selectKey keyProperty="id" resultType="int" order="BEFORE">
+		select SEQUENCE_TB_USER.nextval as id from dual
+    </selectKey>
+    Insert into TB_USER
+    (id, username , password, email , address)
+    values
+    (#{id}, #{user口ame} , #{password}, #{email} , #{address})
+</insert>
+```
+
+通过selectKey元素，此元素会首先运行，其通过SEQUENCE序列，TB_USER的id会被设置，然后插入语句被调用
+
+selectKey元素描述如下：
+
+- keyProperty：设置目标属性（一般都是id）
+- keyColumn：破配属性返回结果集中的列名称。
+- resultType：结果的类型。通常Mybatis可以推算出来，但是为了准确，建议写出来。
+- order：可以被设置为BEFORE或AFTER。如为BEFORE，那么他会首先选择主键，设置keyProperty，然后执行插入语句。反之亦然。
+
+---
+
+#### Sql片段
+
+sql元素可以被用来定义可重用的SQL代码段，可以包含在其他语句。
+
+```xml
+<sql id="userColumns">${alias}.id,${alias}.name</sql>
+```
+
+可以被复用在下面这个语句中
+
+```xml
+<select id="selectUsers" resultType="map">
+	select
+    <!-- 引入sql片段 -->
+    <include refid="userColumns">
+        <!-- name：alias 为 sql片段中的变量  value为变量的值 -->
+    	<property name="alias" value="user" />
+    </include>
+</select>
+```
+
+---
+
+#### 查询入参parameterType
+
+- 可以设置为简单数据类型，很少用。
+- 可以设置为对象，如User
+
+```xml
+<insert id="insertUser" parameterType="User">
+	insert into users(id, username, password)
+    value (#{id}, #{username}, #{password})
+</insert>
+```
+
+如果User类型的参数对象传递到了语句中，如#{id}语句则会查找参数对象User的id属性，#{username}和#{password}也是一样，然后将他们的之传入预处理语句的参数中。
+
+---
+
+#### ResultMaps
+
+```xml
+<resultMap id="userResultMap" type="org.fkit.domain.User">
+    <id property="id" column="user_id" />
+    <result property="name" column="user_name" />
+    <result property="sex" column="user_sex" />
+    <result property="age" column="user_age" />
+</resultMap>
+```
+
+属性解释：
+
+- id：resultMap的唯一标识符
+- type：resultMap实际返回的类型
+
+resultMap子元素解释：
+
+- id：数据库的主键，其中property为Bean类的属性，column为数据库对应列名
+- result：表示为普通列，其中property为Bean类的属性，column为数据库对应列名
+- association
+  - column：数据库表列名，表示此列的值作为参数进行之后的select语句查询
+  - property：返回类型对象的属性名
+  - javaType：该属性对应的类型名称
+  - select：表示执行一条查询语句，将查询到的数据封装到property所代表的对象中
+
+```xml
+<!-- 映射学生对象的resultMap -->
+<resultMap id="studentResultMap" type="org.fkit.domain.Student">
+    <id property="id" column="id" />
+    <result property="name" column="name" />
+    <result property="sex" column="sex" />
+    <result property="age" column="age" />
+    <!-- 关联映射 -->
+    <association property="clazz" column="clazz_id" javaType="org.fkit.domain.Clazz" 				select="selectClazzWithId" />
+</resultMap>
+
+<!-- 根据班级id查询班级 -->
+<select id="selectClazzWithId" resultType="org.fkit.domain.Clazz">
+    SELECT * FROM TB_CLAZZ where id = #{id}
+</select>
+```
+
+- collection
+  - property：表示返回类型的属性名
+  - javaType：表示返回类型的名称，本例为ArrayList集合
+  - ofType：表示集合当中的类型，本例为Student类型
+  - column：数据库表列名，表示此列的值作为参数进行之后的select语句查询
+  - select：一条查询语句，结果赋给property所代表的对象
+  - fetchType：取值为eager和lazy。eager表示立即加载；lazy表示懒加载。
+
+一对多关系通常映射为集合对象，而由于多方的数据量可能很大，所有通常采用懒加载；
+
+（当使用collection时使用懒加载）
+
+而多对一只是关联到一个对象，所以通常使用多表连接直接把数据查出来（注意不同表列名重复问题）。
+
+（当使用association时，直接多表链接查出数据）
+
+使用懒加载 首先在配置文件中加入下面两句话
+
+```xml
+<settings>
+    <!-- 延迟加载的全局开关，当开启时，所有关联对象都会延迟加载。默认为false -->
+    <setting name="lazyLoadingEnabled" value="true"/>
+    <!-- 为true时：带有延迟加载属性的对象立即加载；为false时，懒加载。 默认为true -->
+    <setting name="aggressiveLazyLoading" value="false"/>
+</settings>
+```
+
+示例：
+
+```xml
+<!-- 映射班级对象的resultMap -->
+<resultMap id="clazzResultMap" type="org.fkit.domain.Clazz">
+    <id property="id" column="id" />
+    <result property="code" column="code" />
+    <!-- 班级的学生属性，因为一个班级有多个学生，所以该属性是一个集合 -->
+    <collection property="students" javaType="ArrayList"
+                column="id" ofType="org.fkit.domain.Student" select="selectStudentWithId" />
+
+</resultMap>
+
+<!-- 根据班级id查询学生 -->
+<select id="selectStudentWithId" resultType="org.fkit.domain.Student">
+    SELECT * FROM TB_STUDENT where clazz_id = #{id}
+</select>
+```
+
+---

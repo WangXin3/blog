@@ -1,0 +1,31 @@
+---
+title: SpringMVC执行流程
+date: '2020-05-11'
+tags: ['SpringMVC']
+draft: false
+summary: 'SpringMVC执行流程'
+---
+
+## SpringMVC执行流程
+
+![](/static/images/SpringMVC执行流程/SpringMVC执行流程-1.png)
+
+## 流程说明
+
+1. 客户端（用户/浏览器）发送请求，请求到`DispatcherServlet`
+2. `DispatcherServlet`根据请求的URL去处理器映射器寻找Handler（处理器）
+3. 处理器映射器生成`HandlerExecutionChain`（处理器执行链），一并返回给`DispatcherServlet`
+4. `DispatcherServlet`请求`HandlerAdapter`（处理器适配器）去执行`Handler`
+5. 处理器适配器去执行`Handler`
+6. 处理器（也就是我们所说的`Controller`）执行完并返回`ModelAndView`给处理器适配器
+7. 处理器适配器将Handler处理完后返回的结果ModelAndView也返回给`DispatcherServlet`
+8. `DispatcherServlet`再去请求`ViewResolver`（视图解析器）进行视图解析
+9. 视图解析器返回一个View视图给`DispatcherServlet`
+10. `DispatcherServlet`进行视图渲染，并将对象模型放入`Request`域中
+11. `DispatcherServlet`响应给用户
+
+## 联系我
+
+邮箱：91907@163.com
+
+<img src="https://i.loli.net/2020/04/12/ME7VQHF9eIpbxTg.jpg" />

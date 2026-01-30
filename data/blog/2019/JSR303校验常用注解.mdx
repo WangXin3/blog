@@ -1,0 +1,25 @@
+---
+title: JSR303校验常用注解
+date: '2019-05-02'
+tags: ['Java']
+draft: false
+summary: 'JSR303'
+---
+
+|           注解            |                            功能                             |
+| :-----------------------: | :---------------------------------------------------------: |
+|           @Null           |                       对象必须为null                        |
+|         @NotNull          |          对象必须不为null，无法检查长度为0的字符串          |
+|         @NotBlank         |       字符串必须不为Null，且去掉前后空格长度必须大于0       |
+|        @AssertTrue        |                       对象必须为true                        |
+|       @AssertFalse        |                       对象必须为false                       |
+|        @Max(Value)        |                必须为数字，且小于或等于Value                |
+|        @Min(Value)        |                必须为数字，且大于或等于Value                |
+|    @DecimalMax(Value)     |  必须为数字( BigDecimal )，且小于或等于Value。小数存在精度  |
+|    @DecimalMin(Value)     |  必须为数字( BigDecimal )，且大于或等于Value。小数存在精度  |
+| @Digits(integer,fraction) | 必须为数字( BigDecimal )，integer整数精度，fraction小数精度 |
+|      @Size(min,max)       |   对象(Array、Collection、Map、String)长度必须在给定范围    |
+|          @Email           |                  字符串必须是合法邮件地址                   |
+|           @Past           |            Date和Calendar对象必须在当前时间之前             |
+|          @Future          |            Date和Calendar对象必须在当前时间之后             |
+|  @Pattern(regexp="正则")  |                String对象必须符合正则表达式                 |

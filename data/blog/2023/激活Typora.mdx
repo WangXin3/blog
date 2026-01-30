@@ -1,0 +1,204 @@
+---
+title: 激活Typora
+date: '2023-06-10'
+tags: ['Tool']
+draft: false
+summary: '激活Typora'
+---
+
+# 方法一：不用软件
+
+1. 安装node环境
+
+2. 安装asar
+
+   ```shell
+   npm install -g asar
+   ```
+
+3. 进入typora安装目录，进入resources
+
+   ```shell
+   asar extract node_modules.asar ./node
+   ```
+
+4. 进入.\node\raven
+
+5. 创建hook.js文件，内容如下
+
+   ```js
+   //this file is a little example of how to use injecting ability
+   //to hook a function and change its behavior
+   //in this case we hook the function that is responsible for the decryption of the license
+   //and we change the behavior to return a valid license
+
+   // JUST FOR LEARNING PURPOSES, DON'T USE THIS TO CRACK SOFTWARE
+
+   //Adding hook
+   const crypto = require('crypto')
+   const pubdec = crypto['publicDecrypt']
+   delete crypto['publicDecrypt']
+   let fingerprint,
+     email,
+     uuid,
+     license,
+     computerInfo = ''
+   let License = ''
+   crypto.publicDecrypt = function (key, buffer) {
+     log('PubDec Key:' + key)
+     log('buf: ' + buffer.toString('base64'))
+     if (buffer.slice(0, 26).compare(Buffer.from('CRACKED_BY_DIAMOND_HUNTERS')) == 0) {
+       License = buffer.toString('base64')
+       let ret = buffer.toString().replace('CRACKED_BY_DIAMOND_HUNTERS', '')
+       log('backdoor data,return : ' + ret)
+       return Buffer.from(ret)
+     }
+     return pubdec(key, buffer)
+   }
+
+   const fetch = require('electron-fetch')
+   fetch_bak = fetch['default']
+   delete fetch['default']
+   fetch.default = async function fetch(url, options) {
+     log('[fetch]fetch ' + url)
+     log('[fetch]Arg ' + JSON.stringify(options))
+     data = await fetch_bak(url, options)
+     if (url.indexOf('api/client/activate') != -1) {
+       params = JSON.parse(options.body)
+       ;((fingerprint = params.f),
+         (email = params.email),
+         (uuid = params.u),
+         (license = params.license),
+         (computerInfo = params.l))
+       log('[activate]Fingerprint ' + fingerprint)
+       log('[activate]Email ' + email)
+       log('[activate]UUID ' + uuid)
+       log('[activate]License ' + license)
+       log('[activate]ComputerInfo ' + computerInfo)
+       log('[fetch]RetCode ' + data.status)
+       ret = await data.buffer()
+       log('[fetch]Ret ' + ret.toString())
+
+       ret = Buffer.from(
+         '{"code":0,"retry":true,"msg":"' +
+           Buffer.from(
+             'CRACKED_BY_DIAMOND_HUNTERS' +
+               JSON.stringify({
+                 fingerprint: fingerprint,
+                 email: email,
+                 license: license,
+                 type: '',
+               })
+           ).toString('base64') +
+           '"}'
+       )
+       log('replace ret: ' + ret.toString())
+       data.text = () => {
+         return new Promise((resolve, reject) => {
+           resolve(ret.toString())
+         })
+       }
+       data.json = () => {
+         return new Promise((resolve, reject) => {
+           resolve(JSON.parse(ret.toString()))
+         })
+       }
+     }
+     if (url.indexOf('api/client/renew') != -1) {
+       ret = await data.buffer()
+       log('[fetch]Ret ' + ret.toString())
+
+       ret = Buffer.from('{"success":true,"code":0,"retry":true,"msg":"' + License + '"}')
+       log('replace ret: ' + ret.toString())
+       data.text = () => {
+         return new Promise((resolve, reject) => {
+           resolve(ret.toString())
+         })
+       }
+       data.json = () => {
+         return new Promise((resolve, reject) => {
+           resolve(JSON.parse(ret.toString()))
+         })
+       }
+     }
+     return new Promise((resolve, reject) => {
+       resolve(data)
+     })
+   }
+
+   http = require('http')
+
+   function log(str) {
+     http
+       .get('http://127.0.0.1:3000/log?str=' + str, (res) => {})
+       .on('error', (err) => {
+         console.log('Error: ', err.message)
+       })
+   }
+
+   log = console.log
+   log('Hook Init')
+
+   var Module = require('module')
+   var originalRequire = Module.prototype.require
+
+   Module.prototype.require = function () {
+     log('Require ' + arguments[0])
+     if (arguments[0] == 'crypto') {
+       log('Hooking crypto')
+       return crypto
+     }
+     if (arguments[0] == 'electron-fetch') {
+       log('Hooking electron-fetch')
+       return fetch
+     }
+     return originalRequire.apply(this, arguments)
+   }
+
+   console.log = log
+   let validator = {
+     set: function (target, key, value) {
+       if (key === 'log') {
+         log('console.log override blocked')
+         return
+       }
+       target[key] = value
+     },
+   }
+
+   let proxy = new Proxy(console, validator)
+   console = proxy
+   module.exports = fetch
+
+   //hook finished
+   ```
+
+6. 修改文件夹下index.js文件，文件末尾追加一行代码，换行后追加
+
+   ```js
+   require('./hook')
+   ```
+
+7. 回到resources目录，执行打包命令
+
+   ```shell
+   asar pack ./node node_modules.asar
+   ```
+
+8. 打开软件，输入邮箱和激活码，激活码如下
+
+   ```js
+   7XRPVZ-893BCL-Q3GVZ5-PJU7JL
+   ```
+
+# 方法二：用软件（快捷）
+
+将软件[typora_inject.exe](/static/tool/typora_inject.exe)放到typora安装根目录，cmd运行软件，可以看到激活码，打开typora，输入邮箱和激活码即可激活。
+
+# 常见问题
+
+1、激活时提示`fail to write you license to local machine`
+
+解决：按Windows+R打开运行窗口，输入regedit，点确定，打开注册表，依次展开计算机\HKEY_CURRENT_USER\Software\Typora，然后在Typora上右键，点权限，选中Administrtors，把权限全部设置为允许。
+
+2、激活失败，删除node目录重新打开激活软件。

@@ -1,0 +1,150 @@
+---
+title: MyBatis一二级缓存
+date: '2019-05-02'
+tags: ['Java', 'MyBatis']
+draft: false
+summary: 'MyBatis'
+---
+
+#### if
+
+```xml
+<!-- 示例一： -->
+<select id="selectEmployeeByIdLike" resultType="org.fkit.domain.Employee">
+    SELECT * FROM tb_employee WHERE state = 'ACTIVE'
+    <!-- 可选条件，如果传进来的参数有id属性，则加上id查询条件 -->
+    <if test="id != null ">
+        and id = #{id}
+    </if>
+</select>
+
+<!-- 示例二： -->
+<select id="selectEmployeeByLoginLike" resultType="org.fkit.domain.Employee">
+    SELECT * FROM tb_employee WHERE state = 'ACTIVE'
+    <!-- 两个可选条件，例如登录功能的登录名和密码查询 -->
+    <if test="loginname != null and password != null">
+        and loginname = #{loginname} and password = #{password}
+    </if>
+</select>
+```
+
+---
+
+#### choose(when、otherwise)
+
+```xml
+<select id="selectEmployeeChoose" parameterType="hashmap"
+        resultType="org.fkit.domain.Employee">
+    SELECT * FROM tb_employee WHERE state = 'Aative'
+<!-- 如果传入了id，就根据id查询，没有传入id就根据loginname和password查询，否则查询sex等于男的数据 -->
+    <!-- 类似java中的switch语句 -->
+    <choose>
+        <when test="id != null">
+            and id = #{id}
+        </when>
+        <when test="loginname != null and password != null">
+            and loginname = #{loginname} and password = #{password}
+        </when>
+        <otherwise>
+            and sex = '男'
+        </otherwise>
+    </choose>
+</select>
+```
+
+---
+
+#### where
+
+where元素知道只有在一个以上的if条件有值的情况下才会插入where语句。而且，若最后的内容是 “AND” 或 “OR” 开头，则where元素也知道将他们去除
+
+```xml
+<select id="selectEmployeeLike" resultType="org.fkit.domain.Employee">
+    SELECT * FROM tb_employee
+    <where>
+        <if test="state != null ">
+            state = #{state}
+        </if>
+        <if test="id != null ">
+            and id = #{id}
+        </if>
+        <if test="loginname != null and password != null">
+            and loginname = #{loginname} and password = #{password}
+        </if>
+    </where>
+</select>
+```
+
+---
+
+#### set
+
+set元素会动态前置set关键字，同时也会消除无关的逗号，因为使用了条件语句之后很可能就会在生成的赋值语句的后面留下这些逗号。
+
+```xml
+<update id="updateEmployeeIfNecessary" parameterType="org.fkit.domain.Employee">
+    update tb_employee
+    <set>
+        <if test="loginname != null">loginname=#{loginname},</if>
+        <if test="password != null">password=#{password},</if>
+        <if test="name != null">name=#{name},</if>
+        <if test="sex != null">sex=#{sex},</if>
+        <if test="age != null">age=#{age},</if>
+        <if test="phone != null">phone=#{phone},</if>
+        <if test="sal != null">sal=#{sal},</if>
+        <if test="state != null">state=#{state}</if>
+    </set>
+    where id=#{id}
+</update>
+```
+
+---
+
+#### foreach
+
+```xml
+<select id="selectEmployeeIn" resultType="org.fkit.domain.Employee">
+    SELECT *
+    FROM tb_employee
+    WHERE ID in
+    <foreach item="item" index="index" collection="list" open="(" separator="," close=")">
+        #{item}
+    </foreach>
+</select>
+```
+
+item：配置的是循环中当前的元素
+
+index：当前元素在集合中的下标
+
+open和close：配置的是以什么符合将这些集合元素包起来
+
+separator：是各个元素的分隔符
+
+collection：（注意）
+
+传入的是集合（`List<String>`），collection写list；
+
+传入的是数组（Int[]），collection写array；
+
+传入的是对象，collection写对象中属性类型为list或者array的属性名；
+
+传入的是`Map<String, Object>`，collection写Map中value是list类型或者array类型的key值。
+
+---
+
+#### bind
+
+```xml
+<select id="selectEmployeeLikeName" resultType="org.fkit.domain.Employee">
+    <bind name="pattern" value="'%' + _parameter.getName() + '%'" />
+    SELECT * FROM tb_employee
+    WHERE loginname LIKE #{pattern}
+</select>
+```
+
+bind能从入参中拿到对象，将对象中的属性取出，并赋值给一个变量
+
+格式： \_对象名.getXXX（） 就可以取到某个对象值
+
+---

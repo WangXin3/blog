@@ -1,0 +1,255 @@
+---
+title: SpringAop(切面)理解
+date: '2020-03-28'
+tags: ['Spring']
+draft: false
+summary: 'SpringAop(切面)理解'
+---
+
+## 1.什么是面向切面编程
+
+切面通俗来说，可以帮助我们简化重复代码。
+
+我们在日常开发中，我们可能会在各个增删改接口中记录日志，以便出现问题时可以及时有效地找出原因，但是系统中增删改的接口不是一个两个，而是会有很多个，我们如果在所有增删改的接口中编写记录日志的代码，就会导致记录日志的的逻辑散布于系统中的任何犄角旮旯，导致接口臃肿，接口核心功能不明确。
+
+切面正好可以帮助我们解决这个问题，切面正如其名，好像是一把刀一样，把所有增删改接口中的记录日志的代码横向切割出来，然后存放到系统的中，系统中记录日志的代码就只有这一份，然后某个增删改接口需要记录日志的话，就去定义切点表达式，让切点表达式可以找到需要记录日志的接口，让切面帮你做枯燥但又不得不做地记录日志。
+
+## 2.SpringAop术语
+
+- 通知/增强(Advice)：帮需要增强的方法做一些事情。（如：重复度高的代码）
+- 连接点(Join Point)：所有可以使用通知的点。（如：记录日志时，所有的接口方法就是连接点）
+- 切点(PointCut)：是某种规则，让满足规则的连接点可以使用通知。
+- 切面(Aspect)：就是通知和切面的结合，两者共同定义了切面，切点确定在何处，通知决定在何时。
+
+## 3.切点
+
+前面介绍了，切点是一种规则，可以找出符合规则的连接点。
+
+SpringAop只支持方法级别的代理
+
+Spring借助了AspectJ的知识点来定义SpringAop的切面
+
+|  AspectJ指示器  |                                            描述                                             |
+| :-------------: | :-----------------------------------------------------------------------------------------: |
+|      arg()      |                           限制连接点匹配参数为指定类型的执行方法                            |
+|     @args()     |                         限制连接点匹配参数由指定注解标注的执行方法                          |
+| **execution()** |                               **用于匹配是连接点的执行方法**                                |
+|     this()      |                        限制连接点匹配Aop代理的bean引用为指定类型的类                        |
+|     target      |                            限制连接点匹配目标对象为指定类型的类                             |
+|    @target()    |             限制连接点匹配特定的执行对象，这些对象对应的类型具有指定类型的注解              |
+|    within()     |                                  限制连接点匹配指定的类型                                   |
+|    @within()    | 限制连接点匹配指定注解所标注的类型（当使用SpringAop时，方法定义在由指定的注解所标注的类里） |
+| **@annotation** |                              **限定匹配带有指定注解的连接点**                               |
+
+### 3.1 常用的指示器
+
+- `execution()：用于匹配是连接点的执行方法`
+
+- `@annotation：限定匹配带有指定注解的连接点`
+
+### 3.2 编写切点
+
+```
+execution(* com.wxx.*Service(..))
+表示匹配任意返回值，com.wxx包下, 以Service为后缀的接口或类下且任意参数列表的方法
+
+@annotation(com.wxx.log.Log)
+表示匹配所有使用了Log注解的连接点（方法）
+```
+
+## 4. 切面
+
+### 4.1 编写切面
+
+```java
+import org.aspectj.lang.annotation.*;
+
+/**
+ * @author 她爱微笑
+ * @date 2020/3/23
+ */
+@Aspect
+public class TestAspect {
+
+	/**
+	 * 在被通知方法之前执行
+	 */
+	@Before("execution(* com.wxx.*Service(..))")
+	public void beforeHello() {
+		// 前置通知
+	}
+
+	/**
+	 * 在被通知方法之后执行
+	 */
+	@After("execution(* com.wxx.*Service(..))")
+	public void afterGoodBye() {
+		// 后置通知
+	}
+
+	/**
+	 * 在被通知方法返回（return）时执行
+	 */
+	@AfterReturning("execution(* com.wxx.*Service(..))")
+	public void returnDoSomething() {
+		// 返回通知
+	}
+
+	/**
+	 * 在被通知方法抛出一个异常时执行
+	 */
+	@AfterThrowing("execution(* com.wxx.*Service(..))")
+	public void ThrowQuarrel() {
+		// 异常通知
+	}
+
+	/**
+	 * 在被通知方法执行前后都执行，甚至可以决定被执行方法是否执行
+	 */
+	@Around("execution(* com.wxx.*Service(..))")
+	public void getTogether() {
+		// 环绕通知
+	}
+}
+```
+
+|      注解       |                   描述                   |
+| :-------------: | :--------------------------------------: |
+|     @After      | 通知方法会在目标方法返回或抛出异常后调用 |
+| @AfterReturning |      通知方法会在目标方法返回后调用      |
+| @AfterThrowing  |    通知方法会在目标方法抛出异常后调用    |
+|     @Around     |       通知方法会将目标方法包裹起来       |
+|     @Before     |     通知方法会在目标方法调用之前执行     |
+
+### 4.2 切面优化
+
+在上面的代码中，每个注解中都有相同的切点表达式，这样的代码不够优雅，使用`@Pointcut()`优化一下
+
+```java
+import org.aspectj.lang.annotation.*;
+
+/**
+ * @author 她爱微笑
+ * @date 2020/3/23
+ */
+@Aspect
+public class TestAspect {
+
+	/**
+	 * 使用@Pointcut注解，在通知注解中就可以使用helloAspect()来共用切点表达式了
+	 * 避免了每个通知注解中都是长长的切点表达式
+	 */
+	@Pointcut("execution(* com.wxx.*Service(..))")
+	public void helloAspect() {
+		// 不要写任何代码
+	}
+
+	/**
+	 * 在被通知方法之前执行
+	 */
+	@Before("helloAspect()")
+	public void beforeHello() {
+		// 前置通知
+	}
+
+	/**
+	 * 在被通知方法之后或抛出异常时执行
+	 */
+	@After("helloAspect()")
+	public void afterGoodBye() {
+		// 后置通知
+	}
+
+	/**
+	 * 在被通知方法返回（return）后执行
+	 */
+	@AfterReturning("helloAspect()")
+	public void returnDoSomething() {
+		// 返回通知
+	}
+
+	/**
+	 * 在被通知方法抛出一个异常时执行
+	 */
+	@AfterThrowing("helloAspect()")
+	public void ThrowQuarrel() {
+		// 异常通知
+	}
+
+	/**
+	 * 在被通知方法执行前后都执行，甚至可以决定被执行方法是否执行
+	 */
+	@Around("helloAspect()")
+	public void getTogether() {
+		// 环绕通知
+	}
+}
+
+```
+
+## 5. @Around注解详解
+
+```java
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Pointcut;
+
+/**
+ * @author 她爱微笑
+ * @date 2020/3/23
+ */
+@Aspect
+public class Test2Aspect {
+
+	/**
+	 * 定义切点表达式
+	 */
+	@Pointcut("@annotation(wxx.com.log.Log)")
+	public void hello2Aspect(){
+
+	}
+
+	/**
+	 * 使用环绕通知
+	 * 环绕通知是非常强大的
+	 */
+	@Around("hello2Aspect()")
+	public void Log(ProceedingJoinPoint joinPoint){
+		System.out.println("相当于前置通知");
+		try {
+			// 执行目标方法
+			joinPoint.proceed();
+			System.out.println("相当于后置通知");
+		} catch (Throwable throwable) {
+			throwable.printStackTrace();
+			System.out.println("相当于异常通知");
+		}
+
+		System.out.println("相当于返回通知");
+	}
+}
+```
+
+使用`@Around()`注解时，通知方法的第一个参数必须是`ProceedingJoinPoint`，因为需要该对象执行目标方法或者其他操作。
+
+### 5.1 ProceedingJoinPoint常用Api
+
+```java
+@Around("hello2Aspect()")
+public void Log(ProceedingJoinPoint joinPoint) {
+    // 获取参数列表数组
+    Object[] args = joinPoint.getArgs();
+
+    MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+
+    // 参数列表的名称数组
+    String[] parameterNames = signature.getParameterNames();
+
+    // 目标方法所在类名
+    String className = joinPoint.getTarget().getClass().getName();
+
+    // 目标方法名
+    String methodName = signature.getName();
+}
+```

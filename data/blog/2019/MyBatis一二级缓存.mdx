@@ -1,0 +1,61 @@
+---
+title: MyBatis一二级缓存
+date: '2019-05-02'
+tags: ['Java', 'MyBatis']
+draft: false
+summary: 'MyBatis'
+---
+
+#### 一级缓存(SqlSession级别)
+
+MyBatis的缓存机制是基于id进行缓存的，MyBatis使用HashMap缓存数据，使用对象id作为key，对象作为value保存。
+
+当一个SqlSession结束后该SqlSession中的一级缓存也就不存在了。一级缓存默认开启，不需要配置开启
+
+当执行了DML（增、删、改）操作，sqlSession会自动清空缓存，为了保证缓存中是最新的数据。
+
+SqlSession之间缓存是独立的，不是共享的。
+
+---
+
+#### 二级缓存（mapper级别）
+
+多个SqlSession使用同一个mapper的SQL语句去操作数据库，得到的数据会存在二级缓存区域，它同样是使用HashMap进行数据存储的。相比一级缓存，二级缓存范围更大，多个SqlSession可以共享二级缓存中的数据，二级缓存是跨SqlSession的。
+
+其作用域是mapper.xml文件中所指的同一个namespace。不同的SqlSession两次执行相同的namespace的SQL语句，而且SQL中参数也相同，即就是最终执行了相同的的SQL语句，当第一个SqlSession调用close（）关闭一级缓存时，第一次从数据库中查询到的数据会被保存到二级缓存，第二次查询时会从二级缓存中获取数据，不再去数据库查询，从而提高查询效率。
+
+开启二级缓存配置：
+
+MyBatis配置文件
+
+```xml
+<settings>
+    <!-- 开启二级缓存 -->
+    <setting name="cacheEnabled" value="true"/>
+</settings>
+```
+
+mapper.xml文件
+
+```xml
+<!-- 开启二级缓存 回收策略为先进先出 自动刷新时间60s 最多缓存512个引用对象 只读 -->
+<cache eviction="LRU" flushInterval="60000" size="512" readOnly="true" />
+```
+
+flushInterval：刷新间隔。 单位毫秒，可设置任意正整数。具体不知道啥作用
+
+size：缓存数目。可设置为任意正整数，默认1024，也要注意运行环境可用内存资源数目
+
+readOnly：只读。可设置为true或false。默认为false，可读写。
+
+- 只读会给调用者返回缓存对象的相同实例，但不能被修改。性能好
+- 可读可写会返回缓存对象的拷贝（通过序列化）。慢，安全。默认为false
+
+eviction：回收策略，默认为LRU。
+
+- LRU：最近最少使用的策略，移除最长时间不被使用的对象。
+- FIFO：先进先出策略，按对象进入缓存的顺序来移除。
+- SOFT：软引用策略，语出基于垃圾回收器状态和软引用规则的对象。
+- WEAK：弱引用策略，更积极地移除基于垃圾回收器状态和弱引用规则的对象。
+
+使用二级缓存时，与查询结果映射的Java对象必须实现java.io.Serializable接口的序列化和反序列化。

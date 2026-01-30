@@ -1,0 +1,203 @@
+---
+title: SpringBoot整合Swagger2
+date: '2019-04-30'
+tags: ['SpringBoot', 'Swagger2']
+draft: false
+summary: 'SpringBoot整合Swagger2'
+---
+
+### 一、样式图
+
+话不多说，先上图看效果
+
+![样式图](/static/images/SpringBoot整合Swagger/SpringBoot整合Swagger2-1.png)
+
+### 二、POM依赖
+
+```xml
+<!-- swagger核心包 -->
+<dependency>
+    <groupId>io.springfox</groupId>
+    <artifactId>springfox-swagger2</artifactId>
+    <version>2.9.2</version>
+</dependency>
+<!-- 一个无依赖的HTML、JS和CSS集合，可以为Swagger兼容API动态生成优雅文档。 -->
+<dependency>
+    <groupId>io.springfox</groupId>
+    <artifactId>springfox-swagger-ui</artifactId>
+    <version>2.9.2</version>
+</dependency>
+```
+
+### 三、Swagger2配置类
+
+**配置类一般放在和Application启动类同级的目录，我这里提供两个配置类，一个配置比较详细，一个配置比较简单，依据个人喜好而定**
+
+#### 2.1详细版（个人使用的话没必要配置这么详细）
+
+```java
+package com.wxx.swagger2.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import springfox.documentation.builders.ApiInfoBuilder;
+import springfox.documentation.builders.PathSelectors;
+import springfox.documentation.builders.RequestHandlerSelectors;
+import springfox.documentation.service.Contact;
+import springfox.documentation.spi.DocumentationType;
+import springfox.documentation.spring.web.plugins.Docket;
+import springfox.documentation.swagger2.annotations.EnableSwagger2;
+
+/**
+ * @author 她爱微笑
+ * @date 2019/4/29
+ */
+@Configuration
+@EnableSwagger2
+public class SwaggerConfig {
+
+    /**
+     * @EnableSwagger2 开启swagger2
+     * apis方法配置要扫描的controller位置，通过paths方法配置路径
+     * apiInfo中构建文档信息的基本信息，例如描述，联系人信息，版本，标题
+     * @return
+     */
+    @Bean
+    Docket docket(){
+        return new Docket(DocumentationType.SWAGGER_2)
+            .select()
+            .apis(RequestHandlerSelectors.basePackage("com.wxx.swagger2.controller"))
+            .paths(PathSelectors.any())
+            .build()
+            .apiInfo(
+                new ApiInfoBuilder().version("v1.0")
+                .title("API测试文档")
+                .description("接口测试文档详细描述")
+                .contact(
+                    new Contact(
+                        "她爱微笑",
+                        "https://github.com/w306026355",
+                        "91907@163.com"
+                    )
+                )
+                .license("Apache-2.0")
+                .licenseUrl("http://www.apache.org/licenses/LICENSE-2.0")
+                .build()
+            );
+    }
+}
+```
+
+#### 2.2简单版(推荐个人使用，清爽)
+
+```java
+package com.wxx.swagger2.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import springfox.documentation.builders.ApiInfoBuilder;
+import springfox.documentation.builders.PathSelectors;
+import springfox.documentation.builders.RequestHandlerSelectors;
+import springfox.documentation.service.Contact;
+import springfox.documentation.spi.DocumentationType;
+import springfox.documentation.spring.web.plugins.Docket;
+import springfox.documentation.swagger2.annotations.EnableSwagger2;
+
+/**
+ * @author 她爱微笑
+ * @date 2019/4/29
+ */
+@Configuration
+@EnableSwagger2
+public class SwaggerConfig {
+
+	@Bean
+    Docket docket() {
+        return new Docket(DocumentationType.SWAGGER_2)
+            .select()
+            .apis(RequestHandlerSelectors.basePackage("com.wxx.swagger2.controller"))
+            .paths(PathSelectors.any())
+            .build()
+            .apiInfo(
+                new ApiInfoBuilder().version("v1.0")
+                    .title("API测试文档")
+                    .build()
+            );
+    }
+}
+```
+
+**几个重要的点：**
+
+1. @Configuration：代表该类是一个配置类，可替换xml配置文件，会被Spring动态扫描。
+2. @EnableSwagger2：使用该注解，说明启用swagger。
+3. RequestHandlerSelectors.basePackage()：配置自己项目的controller路径。
+
+### 四、常用swagger2注解
+
+**加粗为使用很频繁的注解，请务必牢记**
+
+- **@Api：修饰类，描述Controller的作用**
+
+  ```java
+  @Api(tags = "用户信息")
+  ```
+
+- **@ApiOperation：描述方法或接口**
+
+  ```java
+  @ApiOperation(value = "方法名称", notes = "方法详细介绍")
+  ```
+
+- **@ApiIgnore：使用该注解忽略这个API**
+
+  ```java
+  @ApiIgnore
+  直接使用到方法上，是swagger不扫描该方法
+  ```
+
+- @ApiResponse：HTTP响应其中1个描述
+
+  ```java
+  @ApiResponse(code = 404, message = "资源未找到")
+  ```
+
+- @ApiResponses：HTTP响应整体描述
+
+  ```java
+  @ApiResponses({
+      @ApiResponse(code = 404, message = "资源未找到"),
+      @ApiResponse(code = 500, message = "你太帅了")
+  })
+  ```
+
+- @ApiImplicitParam：一个请求参数
+
+  ```java
+  @ApiImplicitParam(paramType = "path", name = "id", value = "用户id", required = true)
+  paramType可选参数有
+  	path（参数获取方式@PathVariable）
+  	query（参数获取方式@RequestParam）
+  	header（参数获取方式@RequestHeader）
+  	body（参数获取方式@RequestBody）
+  	form（表单提交）
+  ```
+
+- @ApiImplicitParams：多个请求参数
+
+  ```java
+  @ApiImplicitParams({
+      @ApiImplicitParam(paramType = "query", name = "username", value = "用户名"),
+      @ApiImplicitParam(paramType = "query", name = "address", value = "地址")
+  })
+  ```
+
+<br>
+
+### 五、如果系统配置了SpringSecurity 或者 Shiro 等权限管理框架
+
+```java
+"/v2/**", "/configuration/**", "/swagger-resources/**",  "/swagger-ui.html/**", "/webjars/**"
+```
+
+**需要放行以上地址，不然会被拦截，导致swagger接口文档无法访问**

@@ -1,0 +1,166 @@
+---
+title: Vue2.0生命周期、钩子函数理解
+date: '2019-04-30'
+tags: ['Vue2']
+draft: false
+summary: 'Vue2.0生命周期、钩子函数理解'
+---
+
+### Vue官方的生命周期图
+
+![](https://cn.vuejs.org/images/lifecycle.png)
+
+---
+
+### 测试代码
+
+可以看到一共有八个钩子函数，来一段测试代码；创建一个html文件，用浏览器打开，F12，点Console看结果
+
+```html
+<!DOCTYPE html>
+<html>
+  <head>
+    <title></title>
+    <script src="https://cdn.jsdelivr.net/npm/vue"></script>
+  </head>
+  <body>
+    <div id="app">
+      <p>{{ message }}</p>
+    </div>
+
+    <script type="text/javascript">
+      var vm = new Vue({
+        el: '#app',
+        data: {
+          message: '她爱微笑',
+        },
+        beforeCreate: function () {
+          console.group('beforeCreate 创建前状态---------->')
+          console.log('%c%s', 'color:red', 'el     : ' + this.$el) //undefined
+          console.log('%c%s', 'color:red', 'data   : ' + this.$data) //undefined
+          console.log('%c%s', 'color:red', 'message: ' + this.message)
+        },
+        created: function () {
+          console.group('created 创建完毕状态---------->')
+          console.log('%c%s', 'color:red', 'el     : ' + this.$el) //undefined
+          console.log('%c%s', 'color:red', 'data   : ' + this.$data) //已被初始化
+          console.log('%c%s', 'color:red', 'message: ' + this.message) //已被初始化
+        },
+        beforeMount: function () {
+          console.group('beforeMount 挂载前状态---------->')
+          console.log('%c%s', 'color:red', 'el     : ' + this.$el) //已被初始化
+          console.log(this.$el)
+          console.log('%c%s', 'color:red', 'data   : ' + this.$data) //已被初始化
+          console.log('%c%s', 'color:red', 'message: ' + this.message) //已被初始化
+        },
+        mounted: function () {
+          console.group('mounted 挂载结束状态---------->')
+          console.log('%c%s', 'color:red', 'el     : ' + this.$el) //已被初始化
+          console.log(this.$el)
+          console.log('%c%s', 'color:red', 'data   : ' + this.$data) //已被初始化
+          console.log('%c%s', 'color:red', 'message: ' + this.message) //已被初始化
+        },
+        beforeUpdate: function () {
+          console.group('beforeUpdate 更新前状态---------->')
+          console.log('%c%s', 'color:red', 'el     : ' + this.$el)
+          console.log(this.$el)
+          console.log('%c%s', 'color:red', 'data   : ' + this.$data)
+          console.log('%c%s', 'color:red', 'message: ' + this.message)
+        },
+        updated: function () {
+          console.group('updated 更新完成状态---------->')
+          console.log('%c%s', 'color:red', 'el     : ' + this.$el)
+          console.log(this.$el)
+          console.log('%c%s', 'color:red', 'data   : ' + this.$data)
+          console.log('%c%s', 'color:red', 'message: ' + this.message)
+        },
+        beforeDestroy: function () {
+          console.group('beforeDestroy 销毁前状态---------->')
+          console.log('%c%s', 'color:red', 'el     : ' + this.$el)
+          console.log(this.$el)
+          console.log('%c%s', 'color:red', 'data   : ' + this.$data)
+          console.log('%c%s', 'color:red', 'message: ' + this.message)
+        },
+        destroyed: function () {
+          console.group('destroyed 销毁完成状态---------->')
+          console.log('%c%s', 'color:red', 'el     : ' + this.$el)
+          console.log(this.$el)
+          console.log('%c%s', 'color:red', 'data   : ' + this.$data)
+          console.log('%c%s', 'color:red', 'message: ' + this.message)
+        },
+      })
+    </script>
+  </body>
+</html>
+```
+
+---
+
+### create和mount相关
+
+页面加载可以看到，执行了四个钩子函数
+
+![](/static/images/Vue2.0生命周期、钩子函数理解/Vue2.0生命周期、钩子函数理解-1.png)
+
+> `beforeCreate`（创建前）：在实例初始化之后，数据观测(data observer) 和 event/watcher 事件配置之前被调用。
+>
+> `created`（创建完成）：组件属性挂载成功，可以对data进行修改
+>
+> `beforeMount`（`dom`挂载前）：el虚拟`dom`被创建，但是data中的数据值并没有渲染到虚拟`dom`
+>
+> `mounted`（`dom`挂载完成）：渲染真实的el `dom`，data的数据被按需的挂载到`dom`中
+
+---
+
+### update相关
+
+现在更改一下message的值，看一下会执行哪些钩子函数
+
+在浏览器console中输入vm.message = 'Hello World！'
+
+![](/static/images/Vue2.0生命周期、钩子函数理解/Vue2.0生命周期、钩子函数理解-2.png)
+
+可以看到执行了beforeUpdate和updated两个钩子函数
+
+> `beforeUpdate`（更新前）：当组件或实例的数据更改之后，会立即执行`beforeUpdate`，然后`vue`的虚拟`dom`机制会重新构建虚拟`dom`与上一次的虚拟`dom`树利用`diff`算法进行对比之后重新渲染，一般不做什么事儿
+>
+> `updated`（更新后）：数据已经更改完成，`dom`也重新render完成，可以操作更新后的虚拟`dom`
+
+---
+
+### destroy相关
+
+现在销毁vm对象，看一下会执行哪些钩子函数
+
+在console输入`vm.$destroy();`命令
+
+![](/static/images/Vue2.0生命周期、钩子函数理解/Vue2.0生命周期、钩子函数理解-3.png)
+
+> `beforeDestroy`（销毁前）：立即执行beforeDestroy
+>
+> `destroyed`（销毁完成）：现在dom已经成为了空壳，现在已经和vue没有关系了，现在操作data并不会渲染到页面中
+
+---
+
+### 总结
+
+- beforeCreate：可以做一些初始化的操作
+- created：可以去ajax异步请求数据，但不能放到dom中去，可以将拿到的数据放到data中去
+- beforeMount：可以做初始数据的获取，加载loading样式等等...
+- mounted：挂载完毕，这时dom节点被渲染到文档内，一些需要dom的操作在此时才能正常进行
+- beforeUpdate：会和之前的dom进行对比并重新渲染
+- updated：可以操作渲染好的dom
+- beforeDestroy：可以出现一些”你确认删除xx吗？“
+- destroyed：提示”xx组件已经被删除“，清空相关内容
+
+#### 不足之处还请慷慨指出
+
+---
+
+### 参考文章
+
+[[Vue2.0 探索之路——生命周期和钩子函数的一些理解](https://segmentfault.com/a/1190000008010666)](https://segmentfault.com/a/1190000008010666?utm_source=tag-newest)
+
+[[vue 生命周期 详解](https://www.cnblogs.com/happ0/p/8075562.html)](https://www.cnblogs.com/happ0/p/8075562.html)
+
+[[对vue生命周期/钩子函数的理解](https://www.cnblogs.com/xkloveme/p/7435271.html)](https://www.cnblogs.com/xkloveme/p/7435271.html)

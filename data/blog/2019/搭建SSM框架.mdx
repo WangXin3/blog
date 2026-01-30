@@ -1,0 +1,512 @@
+---
+title: 搭建SSM框架
+date: '2019-05-02'
+tags: ['Java', 'SpringMVC', 'Spring', 'MyBatis']
+draft: false
+summary: '搭建SSM框架'
+---
+
+### Maven项目结构
+
+![](/static/images/搭建SSM框架/1-1.png)
+
+1. com.wxx.controller 存放controller（控制层）代码
+2. com.wxx.mapper 存放dao接口 我是用逆向工程生成的dao接口还有Mapper文件，所以懒得改Mapper.xml里面的NameSpace，所以包名为mapper
+3. com.wxx.pojo 存放实体对象，一般为数据库对应的对象
+4. com.wxx.service 存放service接口，服务层接口代码
+5. com.wxx.service.impl 存放service接口实现类，服务实现层
+6. 在resources下的com.wxx.mapper存放mapper.xml文件（src/java文件夹下2号包名必须和当前包名一样，只有这样编译之后，xml和接口文件还是会在同一文件夹） 因为在IDEA中，xml文件如果放在src/java文件夹中，不会被打包出来，所以需要放到resources中，因为包名一样，所以编译出来，xml和接口文件还是在同一文件夹的。还有一种解决方案，移步https://www.cnblogs.com/Joke-Jay/p/8135831.html
+7. mybatis文件夹 存放mabatis核心配置文件
+8. spring文件夹 存放spring配置文件（一个整合mybatis（dao层），一个事务管理（service层））和springmvc配置文件（controller层）
+
+下来说说配置文件：
+
+1. 打×的那个不是配置文件，是dao接口映射文件，手动狗头，上面已经说过
+2. SqlMapConfig.xml Mybatis核心配置文件，配置一些Mybatis常用属性
+3. spring-mybatis.xml Spring整合Mybatis，将Mybatis对象配置交给spring管理，注入
+4. spring-service.xml servcie层的配置，主要配置@service注解的扫描，事务配置，注解事务开启
+5. springmvc.xml springmvc的配置，主要配置@controller注解的扫描，等等
+6. jdbc.properties 数据库连接配置信息
+7. log4j.properties 日志配置信息
+8. web.xml 不知道是干啥的请关闭我的这篇文章，立刻，马上😤
+9. pom.xml maven的配置文件
+
+当创建完这些包，文件夹之后呢，开始具体配置
+
+### 具体配置
+
+#### Pom.xml
+
+创建一个新项目肯定先配置pom.xml文件
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.wxx</groupId>
+    <artifactId>ssm-shelves</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>war</packaging>
+
+    <properties>
+        <!-- spring版本号 -->
+        <spring.version>5.0.8.RELEASE</spring.version>
+        <!-- mybatis版本号 -->
+        <mybatis.version>3.4.6</mybatis.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.11</version>
+            <!-- 表示开发的时候引入，发布的时候不会加载此包 -->
+            <scope>test</scope>
+        </dependency>
+
+        <!-- spring核心包 -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-core</artifactId>
+            <version>${spring.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <version>${spring.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-oxm</artifactId>
+            <version>${spring.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
+            <version>${spring.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-jdbc</artifactId>
+            <version>${spring.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webmvc</artifactId>
+            <version>${spring.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-aop</artifactId>
+            <version>${spring.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context-support</artifactId>
+            <version>${spring.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-test</artifactId>
+            <version>${spring.version}</version>
+        </dependency>
+
+        <!-- mybatis核心包 -->
+        <dependency>
+            <groupId>org.mybatis</groupId>
+            <artifactId>mybatis</artifactId>
+            <version>${mybatis.version}</version>
+        </dependency>
+
+        <!-- mybatis/spring包 -->
+        <dependency>
+            <groupId>org.mybatis</groupId>
+            <artifactId>mybatis-spring</artifactId>
+            <version>1.3.2</version>
+        </dependency>
+
+        <!-- 导入Mysql数据库连接jar包 -->
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>5.1.32</version>
+        </dependency>
+
+        <!-- druid连接池 -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>druid</artifactId>
+            <version>1.1.10</version>
+        </dependency>
+
+        <!-- log4j start -->
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-core</artifactId>
+            <version>2.8.2</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>1.7.25</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+            <version>1.7.25</version>
+        </dependency>
+        <!-- log4j end -->
+
+        <!-- json/对象转换-->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>fastjson</artifactId>
+            <version>1.2.47</version>
+        </dependency>
+
+        <!-- servlet 会和tomcat容器内置jar冲突-->
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>javax.servlet-api</artifactId>
+            <version>3.0.1</version>
+            <!-- 表明该包只在编译和测试的时候用 -->
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>jstl</artifactId>
+            <version>1.2</version>
+            <!-- 表明该包只在编译和测试的时候用 -->
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- 上传组件包 如果有上传文件 打开注释 -->
+        <!--<dependency>-->
+        <!--<groupId>commons-fileupload</groupId>-->
+        <!--<artifactId>commons-fileupload</artifactId>-->
+        <!--<version>1.3.1</version>-->
+        <!--</dependency>-->
+        <!--<dependency>-->
+        <!--<groupId>commons-io</groupId>-->
+        <!--<artifactId>commons-io</artifactId>-->
+        <!--<version>2.4</version>-->
+        <!--</dependency>-->
+        <!--<dependency>-->
+        <!--<groupId>commons-codec</groupId>-->
+        <!--<artifactId>commons-codec</artifactId>-->
+        <!--<version>1.9</version>-->
+        <!--</dependency>-->
+
+    </dependencies>
+
+    <!-- 添加tomcat插件 -->
+    <build>
+        <plugins>
+            <!-- 设置编译版本为1.8 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                    <encoding>UTF-8</encoding>
+                </configuration>
+            </plugin>
+
+            <!-- tomcat插件 -->
+            <plugin>
+                <groupId>org.apache.tomcat.maven</groupId>
+                <artifactId>tomcat7-maven-plugin</artifactId>
+                <version>2.2</version>
+                <configuration>
+                    <port>8080</port>
+                    <path>/</path>
+                    <uriEncoding>UTF-8</uriEncoding>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+</project>
+```
+
+#### log4j.properties
+
+日志配置信息
+
+```properties
+#定义LOG输出级别
+log4j.rootLogger=INFO,Console,File
+#定义日志输出目的地为控制台
+log4j.appender.Console=org.apache.log4j.ConsoleAppender
+log4j.appender.Console.Target=System.out
+#可以灵活地指定日志输出格式，下面一行是指定具体的格式
+log4j.appender.Console.layout = org.apache.log4j.PatternLayout
+log4j.appender.Console.layout.ConversionPattern=[%c] - %m%n
+log4j.appender.Console.Encoding=UTF-8
+
+#文件大小到达指定尺寸的时候产生一个新的文件
+log4j.appender.File = org.apache.log4j.RollingFileAppender
+#指定输出目录
+log4j.appender.File.File = logs/ssm.log
+#定义文件最大大小
+log4j.appender.File.MaxFileSize = 10MB
+# 输出所有日志，如果换成DEBUG表示输出DEBUG以上级别日志
+log4j.appender.File.Threshold = ALL
+log4j.appender.File.layout = org.apache.log4j.PatternLayout
+log4j.appender.File.layout.ConversionPattern =[%p] [%d{yyyy-MM-dd HH\:mm\:ss}][%c]%m%n
+```
+
+#### SqlMapConfig.xml
+
+配置mybatis核心配置文件
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE configuration PUBLIC "-//mybatis.org//DTD Config 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-config.dtd">
+
+<configuration>
+    <!-- 配置全局属性 -->
+    <settings>
+        <!-- 使用jdbc的getGeneratedKeys获取数据库自增主键值 -->
+        <setting name="useGeneratedKeys" value="true" />
+
+        <!-- 使用列别名替换列名 默认:true -->
+        <setting name="useColumnLabel" value="true" />
+
+        <!-- 开启驼峰规则与下划线之间的映射关系 -->
+        <setting name="mapUnderscoreToCamelCase" value="true"/>
+
+        <!-- mybatis3的SQL日志打印方式 使用 -->
+        <setting name="logImpl" value="STDOUT_LOGGING"/>
+    </settings>
+
+</configuration>
+```
+
+#### jdbc.properties
+
+数据库连接配置
+
+```properties
+jdbc.driver=com.mysql.jdbc.Driver
+jdbc.url=jdbc:mysql://localhost:3306/ssm-shelves?useUnicode=true&characterEncoding=UTF-8
+jdbc.username=填自己的账号
+jdbc.password=填自己的密码
+#定义最大连接数
+jdbc.maxActive=20
+#定义最小空闲
+jdbc.minIdle=1
+#定义初始连接数
+jdbc.initialSize=0
+#定义最长等待时间
+jdbc.maxWait=60000
+```
+
+#### spring-mybatis.xml
+
+整合spring和mybatis
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+	http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.0.xsd">
+
+    <!--引入jdbc配置文件-->
+    <context:property-placeholder location="classpath:jdbc.properties"/>
+
+    <!-- 配置连接池 -->
+    <bean id="dataSource" class="com.alibaba.druid.pool.DruidDataSource">
+        <!-- 配置连接池属性 -->
+        <property name="driverClassName" value="${jdbc.driver}" />
+        <property name="url" value="${jdbc.url}" />
+        <property name="username" value="${jdbc.username}" />
+        <property name="password" value="${jdbc.password}" />
+
+        <!-- 私有属性 -->
+        <property name="maxActive" value="${jdbc.maxActive}" />
+        <property name="minIdle" value="${jdbc.minIdle}" />
+        <property name="initialSize" value="${jdbc.initialSize}"/>
+        <property name="maxWait" value="${jdbc.maxWait}"/>
+    </bean>
+
+    <!-- 配置SqlSessionFactory对象 -->
+    <bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+        <!-- 注入数据库连接池 -->
+        <property name="dataSource" ref="dataSource"/>
+        <!-- 扫描pojo包 使用别名 -->
+        <property name="typeAliasesPackage" value="com.wxx.pojo"/>
+        <!-- 配置mybatis核心配置文件 -->
+        <property name="configLocation" value="classpath:mybatis/SqlMapConfig.xml"/>
+        <!-- 扫描Mapper层的配置文件 必须放在resources文件夹下
+                和java文件下dao接口保持一样的位置-->
+        <property name="mapperLocations" value="classpath:/com/wxx/mapper/*.xml"/>
+    </bean>
+
+    <!-- 配置扫描Dao接口包，动态实现Dao接口，注入到spring容器中 -->
+    <bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+        <!-- 注入SqlSessionFactory对象 -->
+        <property name="sqlSessionFactoryBeanName" value="sqlSessionFactory"/>
+        <!-- 需要扫描的dao接口 -->
+        <property name="basePackage" value="com.wxx.mapper"/>
+    </bean>
+
+</beans>
+```
+
+#### spring-service.xml
+
+配置service层，事务管理，注解事务开启
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+    http://www.springframework.org/schema/beans/spring-beans.xsd
+    http://www.springframework.org/schema/context
+    http://www.springframework.org/schema/context/spring-context.xsd
+    http://www.springframework.org/schema/tx
+    http://www.springframework.org/schema/tx/spring-tx.xsd">
+
+    <!-- 自动扫描service包的@Service注解 -->
+    <context:component-scan base-package="com.wxx"/>
+
+    <!-- 配置事务管理 -->
+    <bean id="dataSourceTransactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <!-- 注入数据库连接池 用IDEA，dataSource可能会报红，不用在意 -->
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+
+    <!-- 启用事务注解支持 -->
+    <tx:annotation-driven transaction-manager="dataSourceTransactionManager"/>
+</beans>
+```
+
+#### springmvc.xml
+
+配置springmvc
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:mvc="http://www.springframework.org/schema/mvc"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+                        http://www.springframework.org/schema/beans/spring-beans-3.1.xsd
+                        http://www.springframework.org/schema/context
+                        http://www.springframework.org/schema/context/spring-context-3.1.xsd
+                        http://www.springframework.org/schema/mvc
+                        http://www.springframework.org/schema/mvc/spring-mvc-4.0.xsd">
+
+    <!-- 自动扫描controller包的@Controller注解 -->
+    <context:component-scan base-package="com.wxx.controller"/>
+
+    <!-- 配置默认处理器映射器，处理器适配器 -->
+    <mvc:annotation-driven/>
+
+    <!-- 静态资源默认servlet配置
+        (1)加入对静态资源的处理：js,gif,png,css
+        (2)允许使用"/"做整体映射
+    -->
+    <mvc:default-servlet-handler/>
+
+    <!-- 定义跳转的文件的前后缀 视图模式配置 -->
+    <bean class="org.springframework.web.servlet.view.InternalResourceViewResolver">
+        <!-- 前缀 -->
+        <property name="prefix" value="/WEB-INF/jsp/"/>
+        <!-- 后缀 -->
+        <property name="suffix" value=".jsp"/>
+    </bean>
+
+    <!-- 配置文件上传，如果没有文件上传可以不配，那么Pom配置文件中也不必引入上传组件包 -->
+    <!--<bean id="multipartResolver" class="org.springframework.web.multipart.commons.CommonsMultipartResolver">-->
+        <!--&lt;!&ndash; 默认编码 &ndash;&gt;-->
+        <!--<property name="defaultEncoding" value="utf-8" />-->
+        <!--&lt;!&ndash; 文件大小最大值 10M&ndash;&gt;-->
+        <!--<property name="maxUploadSize" value="10485760" />-->
+        <!--&lt;!&ndash; 内存中的最大值 上传的文件大小低于此值 则放在内存中-->
+            <!--大于此值 则放到硬盘上&ndash;&gt;-->
+        <!--<property name="maxInMemorySize" value="40960" />-->
+    <!--</bean>-->
+
+</beans>
+```
+
+#### web.xml
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://java.sun.com/xml/ns/javaee"
+         xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-app_3_0.xsd"
+         version="3.0">
+
+    <!-- 编码过滤器，放到所有filter最上面 -->
+    <filter>
+        <filter-name>encodingFilter</filter-name>
+        <filter-class>org.springframework.web.filter.CharacterEncodingFilter</filter-class>
+        <async-supported>true</async-supported>
+        <init-param>
+            <param-name>encoding</param-name>
+            <param-value>UTF-8</param-value>
+        </init-param>
+    </filter>
+    <filter-mapping>
+        <filter-name>encodingFilter</filter-name>
+        <url-pattern>/*</url-pattern>
+    </filter-mapping>
+
+    <!-- 配置Spring的servlet监听器 -->
+    <listener>
+        <listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>
+    </listener>
+
+    <!-- 加载Spring配置文件 -->
+    <context-param>
+        <param-name>contextConfigLocation</param-name>
+        <!-- 只创建spring父容器 -->
+        <param-value>classpath:spring/spring-*.xml</param-value>
+    </context-param>
+
+    <!-- 配置SpringMVC -->
+    <servlet>
+        <servlet-name>springmvc</servlet-name>
+        <servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
+        <init-param>
+            <param-name>contextConfigLocation</param-name>
+            <!-- 只创建springmvc子容器 -->
+            <param-value>classpath:/spring/springmvc.xml</param-value>
+        </init-param>
+        <load-on-startup>1</load-on-startup>
+
+        <!-- async-supported是servlet 3.0后推出的新特性 -->
+        <!-- 当然3.0一下版本会报错 -->
+        <!-- 打开异步处理 -->
+        <async-supported>true</async-supported>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>springmvc</servlet-name>
+        <url-pattern>/</url-pattern>
+    </servlet-mapping>
+
+    <welcome-file-list>
+        <welcome-file>/index.jsp</welcome-file>
+    </welcome-file-list>
+
+</web-app>
+```
+
+对于spring和springmvc父子容器等等问题，请移步https://www.cnblogs.com/hafiz/p/5875740.html
+
+本篇主要是为记录一些配置文件的写法，要配什么，为什么要配

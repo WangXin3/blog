@@ -1,0 +1,99 @@
+---
+title: 00后程序员用SpringBoot有Bug？
+date: '2023-06-10'
+tags: ['SpringBoot', 'Yaml']
+draft: false
+summary: 'SpringBoot解析yaml遇到的问题'
+---
+
+# 起因
+
+六月六日夜，解衣欲睡，网友求助让帮忙运行一下自己在Github下载的源码，说是一个SpringBoot的系统，怎么都启动不起来，我心想这不张飞吃豆芽-小菜一碟吗？可是就是这么简单的事情，让我琢磨了近两个小时。至于为什么是00后程序员用SpringBoot有Bug，且看下文。
+
+# 还原现场
+
+先看网友的`application.yaml`截图，打眼一看，没什么问题，仔细看还是没什么问题。但启动项目报错，提示连接数据库密码错误。
+
+![image-20230608194729569](/static/images/00后程序员用SpringBoot有Bug？/image-20230608194729569.png)
+
+![image-20230608194959971](/static/images/00后程序员用SpringBoot有Bug？/image-20230608194959971.png)
+
+# 开始尝试解决
+
+首先用命令行登录mysql，验证下本地是否有装mysql，且账号密码是否正确，再验证下链接中的数据库是否存在（虽然没有数据库报的不是这个错）。
+
+结果是：都没有问题。
+
+然后，没办法直接继续看报错日志，发现日志中说`jdbcDialect`Bean创建失败，点进去打上断点看看吧。
+
+![image-20230608195402816](/static/images/00后程序员用SpringBoot有Bug？/image-20230608195402816.png)
+
+![image-20230608195508104](/static/images/00后程序员用SpringBoot有Bug？/image-20230608195508104.png)
+
+再启动项目，断点停住了，然后开始查看`operations`对象的属性，经过一顿乱翻，发现了在`operations `-> `classicJdbcTemplate `-> `dataSource`下存在数据库连接信息。打开一看傻眼了。
+
+![image-20230608195741065](/static/images/00后程序员用SpringBoot有Bug？/image-20230608195741065.png)
+
+账号、驱动、链接都对，怎么你密码变成`8533`了，我明明配置的是`020525`啊，为什么？
+
+刚开始我怀疑难道在其他地方配置了数据库信息，没有加载`application.yaml`中的？但是我全局搜索了`8533`，无果。然后尝试修改账号为`root1`，再debug启动。
+
+![image-20230608200110159](/static/images/00后程序员用SpringBoot有Bug？/image-20230608200110159.png)
+
+发现账号成功加载到了root1，那说明数据库连接信息就是加载的`application.yaml`中配置的。那这是为啥呢，小小的脑袋，大大的问号！
+
+随后又尝试修改`application.yaml`文件，因为这个源码使用的是默认的数据库连接池，所以尝试配置连接池的密码为`020525`，但是debug启动之后，还是显示`8533`！！，这时我快疯了。
+
+![image-20230608200320845](/static/images/00后程序员用SpringBoot有Bug？/image-20230608200320845.png)
+
+但是不能放弃，毕竟刚开始可是怀着小菜一碟的心态来的。又开始删刚加的`hikari.password`配置，再把之前的`password`还原。习惯使用快捷键的我，再`username`这一行，使用ctrl + D复制当前行，就是下面这个样子，然后我把下面的`username`改成`password`，这是已经不想把`password`的值改回到`020525`了，因为已经快崩溃了！其实当你尝试了所有失败的可能之后，你就只剩下了成功！
+
+![image-20230608200631245](/static/images/00后程序员用SpringBoot有Bug？/image-20230608200631245.png)
+
+![image-20230608200919657](/static/images/00后程序员用SpringBoot有Bug？/image-20230608200919657.png)
+
+再debug启动看看，再看`dataSource`中加载的数据库配置信息，惊奇的发现，密码加载的是root1，可真是山重水复疑无路，柳暗花明又一村啊。
+
+![image-20230608201051159](/static/images/00后程序员用SpringBoot有Bug？/image-20230608201051159.png)
+
+这下就开始想`root1`和`020525`两个密码的区别，首先一个是纯数字，一个是字母+数字。难道是`SpringBoot`某个版本的bug，会将数字密码转义掉？但很快排除了这个问题，因为国人在安装MySQL时密码不是`123456`，就是`root`，所以纯数字肯定是没有问题的，也修改密码为`123456`进行了验证，也确实没有问题。
+
+![image-20230608201512717](/static/images/00后程序员用SpringBoot有Bug？/image-20230608201512717.png)
+
+到这，其实大多人就止步于此，毕竟能跑就行，我也是，帮网友修改了数据库root密码，改为root，再修改`application.yaml`中的密码，再次启动，不出意外，成功启动。关机！睡觉！
+
+但是刚躺倒到床上，心里一直想这个事情，`020525`和`123456`有啥区别呢（彩蛋：这网友肯定是个00后，而且是5月25的，所以00后用`SpringBoot`有Bug）。
+
+不睡了，睡什么睡，然后又起床开电脑，准备弄清楚为什么`020525`加载到`datasource`里面会变成`8533`，然后从刚开始打断点的地方往上找，找了很久没一点头绪，人在晚上脑子是真的转不过来。最后才想到，可以从加载`application.yaml`开始往下找啊，看到底是哪里把`020525`改成了`8533`，于此同时也搜索了相关`SpringBoot`加载`application.yaml`的相关文档，这里找到一篇[18张图，详解SpringBoot解析yml全流程](https://juejin.cn/post/7054818269621911559)，发现他的情况和我的类似，但是我看源码功底真的太差劲了，跟着他的路径找，最终发现了奥妙之处。
+
+其实就是在解析`application.yaml`中的配置文件时，SpringBoot引入的是org.yaml:snakeyaml包，当你配置value第一个字符是yaml中规定的特殊字符之后，它就会对这个value进行转换了，而我们刚好巧的是，我们的密码第一位是`0`，所以我们满足了其中一个规则。
+
+![image-20230608203754840](/static/images/00后程序员用SpringBoot有Bug？/image-20230608203754840.png)
+
+继续跟源码，发现，进入了`ConstructYamlInt`的`construct`方法，具体规则如下。
+
+![image-20230608204212691](/static/images/00后程序员用SpringBoot有Bug？/image-20230608204212691.png)
+
+因为我们的密码是`020525`，第一个字符是`0`，所以被认为我们传入的值是8进制，然后截掉第一位，剩下5位，为`20525`，后面createNumber就是将八进制`20525`转为十进制，此时这个`020525`就加载完成了。
+
+![image-20230608204443632](/static/images/00后程序员用SpringBoot有Bug？/image-20230608204443632.png)
+
+所以就解释了为啥`020525`变成了最终的`8533`。
+
+![image-20230608204528889](/static/images/00后程序员用SpringBoot有Bug？/image-20230608204528889.png)
+
+# 总结
+
+这个问题的原因就是我们数据库密码是以0开头的，所以被yaml解析器错误的认为我们的value是8进制的，它帮我们转换成了10进制，所以一直导致数据库密码错误，连接失败。
+
+解决方案呢，最简单的就是在`application.yaml`配置纯数字时，一定要小心，避免0、0b、0x开头，如果非要用，那么一定要在value前后加上单引号，这样yaml解析器就不会帮我们转换进制了。
+
+附录列举了yaml会匹配的第一个字符列表。
+
+# 附录
+
+![image-20230608210039600](/static/images/00后程序员用SpringBoot有Bug？/image-20230608210039600.png)
+
+# 参考资料
+
+[18张图，详解SpringBoot解析yml全流程](https://juejin.cn/post/7054818269621911559)

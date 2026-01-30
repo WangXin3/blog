@@ -1,0 +1,48 @@
+---
+title: 定时任务和Spring初始化和销毁注解
+date: '2019-08-01'
+tags: ['Spring']
+draft: false
+summary: '定时任务和Spring初始化和销毁注解'
+---
+
+#### Servlet生命周期注解
+
+从Java EE5规范开始，Servlet增加了两个影响Servlet生命周期的注解（Annotation）：@PostConstruct和@PreConstruct。这两个注解被用来修饰一个非静态的void()方法.而且这个方法不能有抛出异常声明。
+
+`@PostConstruct`（项目启动时调用一次）（可能会调用两次，原因是Spring配置和SpringMvc配置）
+
+> 被@PostConstruct修饰的方法会在服务器加载Servlet的时候运行，并且只会被服务器调用一次，类似于Serclet的inti()方法。被@PostConstruct修饰的方法会在构造函数之后，init()方法之前运行。
+
+`@PreConstruct`
+
+> 被@PreConstruct修饰的方法会在服务器卸载Servlet的时候运行，并且只会被服务器调用一次，类似于Servlet的destroy()方法。被@PreConstruct修饰的方法会在destroy()方法之后运行，在Servlet被彻底卸载之前。
+
+#### Spring定时任务
+
+方法上添加该注解 按照固定频率执行 (上一次**执行完毕时间点之后**多长时间再执行)
+
+```java
+@Scheduled(fixedDelay = 1000 * 5)
+```
+
+方法上添加该注解 按照固定频率执行 (上一次**开始执行时间点之后**5秒再执行)
+
+```java
+@Scheduled(fixedRate = 1000 * 60 * 10)（10分钟执行一次，多用于固定频率）
+```
+
+方法上添加该注解 用于**准点执行**某方法
+
+在线cron表达式生成器：http://cron.qqe2.com/
+
+```java
+@Scheduled(cron = "0 0 23 * * ? *") (每天23点执行一次,多用于准点执行某方法)
+```
+
+需要注意：
+
+1. 类上必须加@Controller或者@Service或者@Component等会被Spring容器扫描的注解
+2. 如果发现@Scheduled不执行，先确定applicationContext.xml中是否配置`<task:annotation-driven/>`
+3. 如果还是不行，在类名上加@EnableScheduling注解，即可
+4. @EnableScheduling注解可以让Spring可以进行任务调度，功能类似于Spring的xml命名空间`<task:*>`
