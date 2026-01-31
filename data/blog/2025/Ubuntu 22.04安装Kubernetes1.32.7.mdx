@@ -1,0 +1,513 @@
+---
+title: Ubuntu 22.04安装Kubernetes1.32.7
+date: '2025-08-11'
+tags: ['Ubantu', 'Kubernetes']
+draft: false
+summary: 'Ubuntu 22.04安装Kubernetes1.32.7'
+---
+
+在ubuntu中不建议使用root用户，那么我们就需要给我们当前非root用户授权
+
+# 基础环境准备（三台机器均需执行）
+1. 准备三台机器并设置静态ip
+    | hostname | ip |
+    | --- | --- |
+    | k8smaster | 192.168.31.100 |
+    | k8snode1 | 192.168.31.101 |
+    | k8snode2 | 192.168.31.102 |
+
+2. 分别为三台设备设置hostname	
+
+    ```bash
+    # master节点执行
+    sudo hostnamectl set-hostname "k8smaster"
+
+    # node1节点执行
+    sudo hostnamectl set-hostname "k8snode1"
+
+    # node2节点执行
+    sudo hostnamectl set-hostname "k8snode2"
+    ```
+
+3. 三台设备全部执行，写入域名到host文件
+
+    ```bash
+    sudo vim /etc/hosts
+
+    # 追加以下内容
+    192.168.31.100 k8smaster
+    192.168.31.101 k8snode1
+    192.168.31.102 k8snode2
+    ```
+
+4. 时间同步
+    + 设置时区为上海
+
+    ```bash
+    timedatectl set-timezone Asia/Shanghai
+    ```
+
+    + 安装ntpdate与阿里云同步时间
+
+    ```bash
+    sudo apt install -y ntpsec-ntpdate
+    ntpdate ntp.aliyun.com
+    ```
+
+    + 设置定时每日同步
+
+    ```bash
+    crontab -e
+    # 选择vim
+
+    # 然后在最后追加定时任务
+    0 0 * * * ntpdate ntp.aliyun.com
+    ```
+
+5. 启用 IPv4 数据包转发
+
+    ```bash
+    # 设置所需的 sysctl 参数，参数在重新启动后保持不变
+    cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+    net.ipv4.ip_forward = 1
+    EOF
+
+    cat << EOF | sudo tee /etc/modules-load.d/k8s.conf
+    overlay
+    br_netfilter
+    EOF
+
+    # 应用 sysctl 参数而不重新启动
+    sudo sysctl --system
+
+    # 验证是否成功
+    sysctl net.ipv4.ip_forward
+    ```
+
+6. 安装ipvs
+
+    ```bash
+    sudo apt install -y ipset ipvsadm
+
+    cat << EOF | sudo tee /etc/modules-load.d/ipvs.conf
+    ip_vs
+    ip_vs_rr
+    ip_VS_wrr
+    ip_vs_sh
+    nf_conntrack
+    EOF
+
+    # 加载ipvsadm的模块
+    sudo modprobe -- ip_vs
+    sudo modprobe -- ip_vs_rr
+    sudo modprobe -- ip_vs_wrr
+    sudo modprobe -- ip_vs_sh
+    sudo modprobe -- nf_conntrack
+
+    # 验证是否成功
+    lsmod | grep ip_vs
+    # 有以下输出就算成功
+    ip_vs_sh               16384  0
+    ip_vs_wrr              16384  0
+    ip_vs_rr               16384  0
+    ip_vs                 176128  6 ip_vs_rr,ip_vs_sh,ip_vs_wrr
+
+    ```
+
+7. 关闭swap分区
+
+    ```bash
+    # 查看当前启用的交换分区
+    sudo swapon --show
+
+    # 禁用交换分区
+    sudo swapoff -a
+
+    # 禁止交换分区在系统启动时自动挂载
+    sudo vim /etc/fstab
+
+    # 注释掉如下行 步骤一中显示的分区
+    /dev/sda2 none swap sw 0 0
+    ```
+
+# 安装容器运行时（三台机器均需执行）
+## 安装docker
+在k8s1.24（包含1.24）版本后移除了内置的docker引擎，推荐使用containerd容器运行时。
+Kubernetes 现在只对接容器运行时接口（CRI），具体实现它并不关注，那么现在实现了CRI容器运行时接口的实现有containerd、CRI-O、Docker Engine等。
+但是使用docker作为运行时容器时需要安装cri-docker插件。
+
+```bash
+# 安装前先卸载操作系统默认安装的docker，
+sudo apt-get remove docker docker-engine docker.io containerd runc
+
+# 阿里源（推荐使用阿里的gpg KEY）
+# 安装阿里云gpg证书
+curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg | sudo apt-key add 
+ 
+# 在指定目录下新建docker.list文件，添加阿里云镜像源
+cd /etc/apt/sources.list.d
+sudo touch docker.list && sudo chmod 666 docker.list
+sudo echo "deb [arch=amd64] https://mirrors.aliyun.com/docker-ce/linux/ubuntu $(lsb_release -cs) stable" > docker.list
+
+# 更新软件源
+sudo apt-get update && sudo apt-get upgrade
+
+# 安装最新版本的Docker
+sudo apt install docker-ce docker-ce-cli containerd.io
+#等待安装完成
+
+# 启动docker
+sudo systemctl start docker
+
+# 查看Docker版本
+sudo docker version
+
+# 配置开机自启动
+sudo systemctl enable docker
+
+# 查看Docker运行状态
+sudo systemctl status docker
+
+# 允许非Root用户执行docker 命令
+sudo usermod -aG docker $USER
+
+# 使权限生效
+newgrp docker 
+
+# 测试查看所有容器
+docker ps -a
+
+# 编辑~/.bashrc文件 新增下面一行，解决重启后非root用户执行docker命令失效问题
+groupadd -f docker
+
+# docker加速
+sudo vim /etc/docker/daemon.json
+# 输入以下加速镜像地址并保存
+{
+    "registry-mirrors": [
+        "https://docker.xuanyuan.me",
+        "https://docker.m.daocloud.io",
+        "https://docker.1ms.run"
+    ]
+}
+
+# 重启docker
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+```
+
+## 安装cri-docker
+地址：[https://github.com/Mirantis/cri-dockerd/releases](https://github.com/Mirantis/cri-dockerd/releases)
+
+1. 下载v0.3.17版本（本文使用）cri-dockerd-0.3.17.amd64.tgz，配置如下。
+
+    ```bash
+    # 解压
+    tar xf cri-dockerd-0.3.17.amd64.tgz
+
+    # 解压完成后，其实只有一个文件：cri-dockerd 把它移动到 /usr/local/bin/ 下即可
+    sudo mv cri-dockerd/cri-dockerd /usr/local/bin/
+
+    # 验证是否成功
+    cri-dockerd --version
+    ```
+
+2. 设置开机启动脚本，创建文件 /etc/systemd/system/cri-dockerd.service ，写入如下内容。
+
+    ```bash
+    sudo vim /etc/systemd/system/cri-dockerd.service
+    # 输入以下内容
+    [Unit]
+    Description=CRI Interface for Docker Application Container Engine
+    Documentation=https://docs.mirantis.com
+    After=network-online.target firewalld.service docker.service
+    Wants=network-online.target
+    Requires=cri-dockerd.socket
+
+    [Service]
+    Type=notify
+    ExecStart=/usr/local/bin/cri-dockerd --pod-infra-container-image=registry.cn-hangzhou.aliyuncs.com/google_containers/pause:3.10
+     --network-plugin=cni --cni-conf-dir=/etc/cni/net.d --cni-bin-dir=/opt/cni/bin --container-runtime-endpoint=unix:///var/run/cri-dockerd.sock --cri-dockerd-root-directory=/var/lib/dockershim --docker-endpoint=unix:///var/run/docker.sock --cri-dockerd-root-directory=/var/lib/docker
+    ExecReload=/bin/kill -s HUP $MAINPID
+    TimeoutSec=0
+    RestartSec=2
+    Restart=always
+    StartLimitBurst=3
+    StartLimitInterval=60s
+    LimitNOFILE=infinity
+    LimitNPROC=infinity
+    LimitCORE=infinity
+    TasksMax=infinity
+    Delegate=yes
+    KillMode=process
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+3. 创建 /etc/systemd/system/cri-dockerd.socket 文件，并写入如下内容，注意改你自己的用户名。
+
+    ```bash
+    sudo vim /etc/systemd/system/cri-docker.socket
+
+    [Unit]
+    Description=CRI Docker Socket for the API
+    PartOf=cri-dockerd.service
+
+    [Socket]
+    ListenStream=/var/run/cri-dockerd.sock
+    SocketMode=0660
+    SocketUser=wangxin
+    SocketGroup=docker
+
+    [Install]
+    WantedBy=sockets.target
+    ```
+
+4. 执行开机自启动命令。
+
+    ```bash
+    systemctl daemon-reload
+    systemctl enable cri-dockerd.service
+    systemctl restart cri-dockerd.service
+    ```
+
+5. 验证是否成功。
+
+    ```bash
+    ls  /var/run | grep docker
+
+    # 显示以下就算成功
+    cri-dockerd.sock
+    docker
+    docker.pid
+    docker.sock
+    ```
+
+## 重启后再验证
+重启三台电脑后再验证以上需要验证安装完成的命令，以确保软件/配置都安装或正确配置，不能带着问题进入下一步。
+
+# 安装K8S
+本文以k8s v1.32.7为例
+
+1. 更新软件仓库，三台设备都执行。
+
+    ```bash
+    sudo apt-get update
+
+    # 基本工具 apt-transport-https 可能是一个虚拟包（dummy package）；如果是的话，你可以跳过安装这个包
+    sudo apt-get install -y apt-transport-https ca-certificates curl gpg
+
+    # 公共签名密钥（1.32）
+    # 如果 `/etc/apt/keyrings` 目录不存在，则应在 curl 命令之前创建它，请阅读下面的注释。
+    # sudo mkdir -p -m 755 /etc/apt/keyrings
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    # 验证
+    ls /etc/apt/keyrings/
+    # 会出下以下显示
+    kubernetes-apt-keyring.gpg
+
+
+    # 准备源仓库 此操作会覆盖 /etc/apt/sources.list.d/kubernetes.list 中现存的所有配置。
+    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.32/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+    # 验证
+    ls /etc/apt/sources.list.d/
+    # 会出下以下显示
+    docker.list  kubernetes.list
+
+    # 更新原仓库索引
+    apt update
+    ```
+
+2. 安装kubeadm kubectl kubelet，三台设备都执行。
+
+    ```bash
+    sudo apt-get install -y kubelet kubeadm kubectl
+    ```
+
+3. 配置kubelet，三台设备都执行。
+
+    ```bash
+    sudo vim /etc/default/kubelet
+
+    # 输入以下配置cgroup
+    KUBELET_EXTRA_ARGS="--cgroup-driver=systemd"
+
+    # 配置开机自启动
+    systemctl enable kubelet
+    ```
+
+4. 规划ip段
+
+    | 网段名称 | 网段 |
+    | --- | --- |
+    | 宿主机网段 | 192.168.31.0/24 |
+    | service网段 | 10.96.0.0/12 |
+    | pod网段 | 10.244.0.0/16 |
+
+5. master执行初始化集群命令
+
+    ```bash
+    kubeadm init --kubernetes-version=1.32.7 --control-plane-endpoint=k8smaster --apiserver-advertise-address=192.168.31.100 --pod-network-cidr=10.244.0.0/16 --service-cidr=10.96.0.0/12  --image-repository=registry.aliyuncs.com/google_containers --cri-socket=unix:///var/run/cri-dockerd.sock  --upload-certs --v=9
+    ```
+
+    + kubernetes-version：指定k8s的版本，我这里是1.32.7
+    + control-plane-endpoint：可以理解为集群master的命名
+    + apiserver-advertise-address：集群中master的地址！注意不要抄，写你自己虚拟机的ip地址
+    + pod-network-cidr：pod网段地址，只要不与集群网段和service网段重复即可
+    + service-cidr：service网段地址，只要不与集群网段和pod网段重复即可
+    + image-repository：指定使用国内镜像
+    + cri-socket：指定使用的容器运行时，如果你使用的containerd容器，那就不用写这个参数
+    + v：日志级别，9表示输出的信息会很详细
+
+6. 等待安装成功
+
+    ![](/static/images/Ubuntu2204安装Kubernetes1_32_7/img.png)
+
+7. 安装完成之后会出现以下指令1
+
+    ```bash
+    mkdir -p $HOME/.kube
+    sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+    sudo chown $(id -u):$(id -g) $HOME/.kube/config
+    ```
+
+    在master节点执行以上执行
+
+8. 指令2，类似即可，这里需要注意区分，有一个是作为控制面板加入的，两个命令很相似，那个命令多了一个`--control-plane`，我们这里只需要node作为工作节点。然后还需要在该指令后面增加`--cri-socket=unix:///var/run/cri-dockerd.sock `
+
+    ```bash
+    sudo kubeadm join k8smaster:6443 --token wua7k6.56sc0gpyjiqcf515 \
+      --discovery-token-ca-cert-hash sha256:50a1cce6ceba3bf7b384f2db8f532e75bf0423bf9192506f4e7df9260c6da9d1
+    ```
+
+    修改后的指令如下，然后分别在两个node节点执行。注意这里要用你自己生成好的指令。
+
+    ```bash
+    sudo kubeadm join k8smaster:6443 --token wua7k6.56sc0gpyjiqcf515 \
+      --discovery-token-ca-cert-hash sha256:50a1cce6ceba3bf7b384f2db8f532e75bf0423bf9192506f4e7df9260c6da9d1 \
+      --cri-socket=unix:///var/run/cri-dockerd.sock
+    ```
+
+9. 等待两个节点加入完成之后，在master节点执行以下命令验证node是否加入成功。
+
+    ```bash
+    kubectl get nodes
+
+    NAME        STATUS       ROLES           AGE    VERSION
+    k8smaster   NotReady     control-plane   5h3m   v1.32.7
+    k8snode1    NotReady     <none>          5h1m   v1.32.7
+    k8snode2    NotReady     <none>          5h1m   v1.32.7
+    ```
+
+10. 此时节点虽然已经加入，但是是NotReady状态，还需要安装网络组件calico。master执行。
+
+    安装教程：[https://docs.tigera.io/calico/latest/getting-started/kubernetes/k8s-single-node#install-calico](https://docs.tigera.io/calico/latest/getting-started/kubernetes/k8s-single-node#install-calico)
+
+    ```bash
+    # 第一步下载部署yaml文件
+    kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.30.2/manifests/tigera-operator.yaml
+
+    # 第二步不能直接安装官网安装我们需要先下载，修改cidr网段地址再创建
+    wget https://raw.githubusercontent.com/projectcalico/calico/v3.30.2/manifests/custom-resources.yaml
+    ```
+
+    修改custom-resources.yaml
+
+    ```yaml
+    # This section includes base Calico installation configuration.
+    # For more information, see: https://docs.tigera.io/calico/latest/reference/installation/api#operator.tigera.io/v1.Installation
+    apiVersion: operator.tigera.io/v1
+    kind: Installation
+    metadata:
+      name: default
+    spec:
+      # Configures Calico networking.
+      calicoNetwork:
+        ipPools:
+        - name: default-ipv4-ippool
+          blockSize: 26
+          cidr: 10.244.0.0/16
+          encapsulation: VXLANCrossSubnet
+          natOutgoing: Enabled
+          nodeSelector: all()
+
+    ---
+
+    # This section configures the Calico API server.
+    # For more information, see: https://docs.tigera.io/calico/latest/reference/installation/api#operator.tigera.io/v1.APIServer
+    apiVersion: operator.tigera.io/v1
+    kind: APIServer
+    metadata:
+      name: default
+    spec: {}
+
+    ---
+
+    # Configures the Calico Goldmane flow aggregator.
+    #apiVersion: operator.tigera.io/v1
+    #kind: Goldmane
+    #metadata:
+    #  name: default
+
+    ---
+
+    # Configures the Calico Whisker observability UI.
+    #apiVersion: operator.tigera.io/v1
+    #kind: Whisker
+    #metadata:
+    #  name: default
+    ```
+
+    ```bash
+    # 修改cidr的网段地址为上面规划的opd网段
+    cidr: 10.244.0.0/16
+
+    # 后面两个目前不需要注释掉即可
+
+    # 然后安装
+    kubectl create -f custom-resources.yaml
+    ```
+
+11. 查看calico安装进度，这里十有八九会失败，具体原因就是镜像拉取不下来，但是只能靠自己想其他办法
+    + 镜像加速
+    + 科学上网
+    + ...
+
+    ```bash
+    # 检查calico启动进度
+    kubectl get pod -n calico-system
+
+    NAME                                       READY   STATUS    RESTARTS       AGE
+    calico-kube-controllers-59ddcd865c-g9czc   1/1     Running   3 (138m ago)   5h3m
+    calico-node-5njtx                          1/1     Running   3 (138m ago)   5h3m
+    calico-node-dr4fk                          1/1     Running   3 (138m ago)   5h3m
+    calico-node-zwrmq                          1/1     Running   3 (138m ago)   5h3m
+    calico-typha-6d8d7d8888-s6hxv              1/1     Running   3 (138m ago)   5h3m
+    calico-typha-6d8d7d8888-xtrnq              1/1     Running   3 (138m ago)   5h3m
+    csi-node-driver-ck4sj                      2/2     Running   6 (138m ago)   5h3m
+    csi-node-driver-wwmps                      2/2     Running   4 (138m ago)   5h3m
+    csi-node-driver-ztgxj                      2/2     Running   6 (138m ago)   5h3m
+    goldmane-5f56496f4c-dtr8x                  1/1     Running   3 (138m ago)   5h3m
+    whisker-6c6d5848fc-7n6dl                   2/2     Running   6 (138m ago)   5h2m
+
+    kubectl get pod -n calico-apiserver
+    NAME                                READY   STATUS    RESTARTS      AGE
+    calico-apiserver-5d6c5fd597-4pkpc   1/1     Running   4 (82m ago)   5h5m
+    calico-apiserver-5d6c5fd597-cplc7   1/1     Running   5 (83m ago)   5h5m
+    ```
+
+    等待全部Running之后，那么calico安装成功，此时再执行命令查看node加入情况
+
+    ```bash
+    kubectl get nodes
+
+    NAME        STATUS   ROLES           AGE     VERSION
+    k8smaster   Ready    control-plane   5h12m   v1.32.7
+    k8snode1    Ready    <none>          5h10m   v1.32.7
+    k8snode2    Ready    <none>          5h9m    v1.32.7
+    ```
+
+    至此，k8s集群安装成功！！！你真的很棒👍
+

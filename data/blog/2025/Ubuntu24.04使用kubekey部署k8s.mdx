@@ -1,0 +1,378 @@
+---
+title: Ubuntu24.04使用kubekey部署k8s
+date: '2025-12-21'
+tags: ['Ubantu', 'Kubernetes']
+draft: false
+summary: 'Ubuntu24.04使用kubekey部署k8s'
+---
+
+# 主机准备
+| 主机名 | ip地址 | 备注 |
+| --- | --- | --- |
+| k8s-master | 192.168.3.100/24 | master |
+| k8s-worker01 | 192.168.3.101/24 | worker |
+| k8s-worker02 | 192.168.3.102/24 | worker |
+
+
+## 修改三台机器的hostname
+```shell
+# k8s-master节点执行
+sudo hostnamectl set-hostname "k8s-master"
+
+# k8s-worker01节点执行
+sudo hostnamectl set-hostname "k8s-worker01" 
+
+# k8s-worker02节点执行
+sudo hostnamectl set-hostname "k8s-worker02"
+```
+
+## 修改三台机器的hosts文件
+```shell
+sudo vim /etc/hosts
+
+# 增加如下
+192.168.3.100 k8s-master
+192.168.3.101 k8s-worker01
+192.168.3.102 k8s-worker02
+```
+
+## 三台机器安装k8s依赖软件
+```yaml
+# socat、conntrack为必装
+# ebtables、ipset、ipvsadm为选装，但推荐安装
+apt -y install socat conntrack ebtables ipset ipvsadm
+```
+
+## 三台机器设置kubekey国内镜像
+```shell
+# 设置kubekey的国内环境变量，以加速下载
+export KKZONE=cn
+```
+
+# 下载并配置kubekey（仅master）
+## 下载kubekey
+```shell
+# 可能下载会很慢，可自行去github离线下载
+curl -sfL https://get-kk.kubesphere.io | sh -
+
+# 如果是离线下载，需自行解压
+tar -zxvf kubekey-v3.1.11-linux-amd64.tar.gz
+
+# 移动到bin目录下，使得可全局使用kk
+mv kk /usr/bin/kk
+```
+
+## 查看kubekey支持的k8s版本
+```shell
+kk version --show-supported-k8s
+
+v1.19.0
+v1.19.8
+v1.19.9
+v1.19.15
+v1.20.4
+v1.20.6
+v1.20.10
+v1.21.0
+v1.21.1
+...
+v1.33.1
+v1.33.2
+v1.33.3
+v1.33.4
+```
+
+## 生成k8s安装文件
+我们这里选用v1.32.8，所以命名生成的安装文件为k8s-v1328.yaml
+
+```shell
+kk create config -f k8s-v1328.yaml --with-kubernetes v1.32.8
+
+# 修改生成的文件
+vim k8s-v1328.yaml
+```
+
+```yaml
+apiVersion: kubekey.kubesphere.io/v1alpha2
+kind: Cluster
+metadata:
+  name: sample
+spec:
+  hosts:
+  # 修改为你的三台机器的信息
+  - {name: k8s-master, address: 192.168.31.100, internalAddress: 192.168.31.100, user: wangxin, password: "wangxin"}
+  - {name: k8s-worker01, address: 192.168.31.101, internalAddress: 192.168.31.101, user: wangxin, password: "wangxin"}
+  - {name: k8s-worker02, address: 192.168.31.102, internalAddress: 192.168.31.102, user: wangxin, password: "wangxin"}
+  roleGroups:
+    etcd:
+    - k8s-master # 这里也要改
+    control-plane: 
+    - k8s-master # 这里也要改
+    worker:
+    - k8s-worker01 # 这里也要改
+    - k8s-worker02 # 这里也要改
+  controlPlaneEndpoint:
+    ## Internal loadbalancer for apiservers 
+    # internalLoadbalancer: haproxy
+
+    domain: lb.kubesphere.local
+    address: "192.168.31.100" # 这里也要改
+    port: 6443
+  kubernetes:
+    version: v1.32.8
+    clusterName: cluster.local
+    autoRenewCerts: true
+    # 容器工具 可选containerd 和 docker
+    containerManager: docker
+  etcd:
+    type: kubekey
+  network:
+    plugin: calico
+    # pods ip地址区间
+    kubePodsCIDR: 10.233.64.0/18
+    # service ip地址区间
+    kubeServiceCIDR: 10.233.0.0/18
+    ## multus support. https://github.com/k8snetworkplumbingwg/multus-cni
+    multusCNI:
+      enabled: false
+  registry:
+    privateRegistry: ""
+    namespaceOverride: ""
+    registryMirrors: []
+    insecureRegistries: []
+  addons: []
+
+```
+
+## 部署k8s
+```shell
+kk create cluster -f k8s-v1328.yaml
+```
+
+# 安装MetalLB
+[https://developer.aliyun.com/article/1616952](https://developer.aliyun.com/article/1616952)
+
+官方地址：[https://metallb.io/](https://metallb.io/configuration/)
+
+MetalLB是外部负载均衡器，它虚拟了k8s服务所在网段的一段ip池，从而使得可以这段虚拟ip池来负载均衡的访问k8s集群。
+
+比如说，你三台机器，192.168.31.100，192.168.31.101，192.168.31.102，之前都是通过192.168.31.100任一一个ip访问，但是某天突然某个机器宕机了，此时k8s就无法访问了，那么此时如果有了k8s外部的负载均衡器，我们是不用关心具体node的ip地址的，只需要访问虚拟ip就行。比如这里的虚拟ip是192.168.31.240.
+
+但是客户端直接访问虚拟ip(192.168.31.240)怎么就负载均衡的转发到了某一个node呢？
+
+![](/static/images/Ubuntu2404使用kubekey部署k8s/img.svg)
+
+## 安装
+```shell
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
+```
+
+新增配置文件
+
+```shell
+sudo vim ippool-l2.yaml
+```
+
+```shell
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: ippool
+  namespace: metallb-system
+spec:
+  addresses:
+  - 192.168.31.240-192.168.31.250 # 这里是ip池，要和宿主机、虚拟机同网段，但ip是未使用的
+---
+# 开启metalLB的Layer2模式
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: example
+  namespace: metallb-system
+```
+
+执行配置
+
+```shell
+kubectl apply -f ippool-l2.yaml
+```
+
+参考：[https://www.cnblogs.com/shunzi115/p/18376156](https://www.cnblogs.com/shunzi115/p/18376156)
+
+## 测试MetalLB是否安装成功
+```shell
+sudo vim nginx-deployment.yaml
+```
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+spec:
+  selector:
+    app: nginx
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: LoadBalancer
+```
+
+```shell
+kubectl apply -f nginx-deployment.yaml
+kubectl get svc
+```
+
+
+![](/static/images/Ubuntu2404使用kubekey部署k8s/img.png)
+
+然后通过主机访问192.168.31.240
+
+![](/static/images/Ubuntu2404使用kubekey部署k8s/img_1.png)
+
+## 清理测试
+```shell
+kubectl delete -f nginx-deployment.yaml
+```
+
+# 安装Helm
+为后续安装gateway做准备
+
+```shell
+curl https://baltocdn.com/helm/signing.asc | gpg --dearmor | sudo tee /usr/share/keyrings/helm.gpg > /dev/null
+sudo apt-get install apt-transport-https --yes
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+sudo apt-get update
+sudo apt-get install helm
+
+# 测试是否安装成功
+helm version
+
+version.BuildInfo{Version:"v3.18.5", GitCommit:"b78692c18f0fb38fe5ba4571a674de067a4c53a5", GitTreeState:"clean", GoVersion:"go1.24.5"}
+```
+
+# 安装istio
+参考：[https://istio.io/latest/zh/docs/ambient/install/helm/](https://istio.io/latest/zh/docs/ambient/install/helm/)
+
+由于ingress将被k8s停止开发新功能，所以这里安装Kubernetes Gateway API CRD和gateway的控制器istio
+
+## 更新或升级Kubernetes Gateway API CRD
+```shell
+kubectl get crd gateways.gateway.networking.k8s.io &> /dev/null || \
+  kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
+
+```
+
+## 安装istio（Ambient 模式）
+### 安装控制平面
+```shell
+# 基本组件 
+# base Chart 包含设置 Istio 所需的基本 CRD 和集群角色。 需要先安装此 Chart，才能安装任何其他 Istio 组件。
+helm install istio-base istio/base -n istio-system --create-namespace --wait
+
+# istiod 控制平面
+# istiod Chart 安装了修订版的 Istiod。 Istiod 是管理和配置代理以在网格内路由流量的控制平面组件。
+helm install istiod istio/istiod --namespace istio-system --set profile=ambient --wait
+
+# CNI 节点代理
+# cni Chart 安装 Istio CNI 节点代理。此代理负责检测属于 Ambient 网格的 Pod， 并配置 Pod 和 ztunnel 节点代理（稍后安装）之间的流量重定向。
+helm install istio-cni istio/cni -n istio-system --set profile=ambient --wait
+```
+
+### 安装数据平面
+```shell
+# ztunnel DaemonSet
+# ztunnel Chart 会安装 ztunnel DaemonSet，它是 Istio Ambient 模式的节点代理组件。
+helm install ztunnel istio/ztunnel -n istio-system --wait
+```
+
+# 体验istio并验证是否安装完成
+### 验证
+参考：[https://istio.io/latest/zh/docs/ambient/getting-started/deploy-sample-app/](https://istio.io/latest/zh/docs/ambient/getting-started/deploy-sample-app/)
+
+```shell
+# 先创建命名空间
+kubectl create ns bookinfo
+
+# 然后执行安装
+kubectl apply -n bookinfo -f https://raw.githubusercontent.com/istio/istio/release-1.28/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -n bookinfo -f https://raw.githubusercontent.com/istio/istio/release-1.28/samples/bookinfo/platform/kube/bookinfo-versions.yaml
+
+# 部署并配置入口网关
+kubectl apply -n bookinfo -f https://raw.githubusercontent.com/istio/istio/release-1.28/samples/bookinfo/gateway-api/bookinfo-gateway.yaml
+
+# 等待ADDRESS出现ip地址即成功
+kubectl get gateway -n bookinfo
+```
+
+![](/static/images/Ubuntu2404使用kubekey部署k8s/img_2.png)
+
+现在就可以通过192.168.31.240访问项目首页了
+
+![](/static/images/Ubuntu2404使用kubekey部署k8s/img_3.png)
+
+刷新几次，可以发现下方的book reviews每次都不一样，说明有负载均衡。
+
+### 清理
+```shell
+kubectl delete -n bookinfo -f https://raw.githubusercontent.com/istio/istio/release-1.28/samples/bookinfo/gateway-api/bookinfo-gateway.yaml
+
+kubectl delete -n bookinfo -f https://raw.githubusercontent.com/istio/istio/release-1.28/samples/bookinfo/platform/kube/bookinfo-versions.yaml
+kubectl delete -n bookinfo -f https://raw.githubusercontent.com/istio/istio/release-1.28/samples/bookinfo/platform/kube/bookinfo.yaml
+
+kubectl delete ns bookinfo
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

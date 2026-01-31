@@ -1,0 +1,46 @@
+---
+title: Ubuntu 22.04设置静态ip
+date: '2025-08-03'
+tags: ['Ubantu']
+draft: false
+summary: 'Ubuntu 22.04设置静态ip'
+---
+
+可以选择带图形化界面的版本和server版，本文用server版演示
+
+1. 确定系统版本`lsb_release -a`。
+    ![](/static/images/Ubuntu2204设置静态ip/img.png)
+2. 首先使用命令`ip addr`查看网卡配置，确定网卡名称。
+    ![](/static/images/Ubuntu2204设置静态ip/img_1.png)
+3. 新建/修改文件`sudo vim /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg `。(如果不添加此配置，直接修改静态ip，重启时会使得静态ip失效。)
+
+    ```bash
+    network: {config: disabled}
+    ```
+
+4. 输入`ls /etc/netplan/`查看配置文件名称。
+    ![](/static/images/Ubuntu2204设置静态ip/img_2.png)
+
+5. `sudo vim /etc/netplan/50-cloud-init.yaml`，一定要注意缩进。该文件顶部注释中也解释了为什么要做第三步。这里的静态ip，网关一定要按自己的来配置。
+    ```bash
+    network:
+        renderer: networkd
+        ethernets:
+            enp0s3:
+                dhcp4: no
+                dhcp6: no
+                addresses: [192.168.31.100/24]
+                routes:
+                  - to: default
+                    via: 192.168.31.1
+                nameservers:
+                  addresses: [114.114.114.114]
+                  search: []
+        version: 2
+    ```
+    ![](/static/images/Ubuntu2204设置静态ip/img_3.png)
+
+6. 使修改后的配置生效`sudo netplan apply`
+7. 测试是否成功，重启（`sudo reboot`）后再测试一次，确保重启静态ip没有被覆盖。
+    ![](/static/images/Ubuntu2204设置静态ip/img_4.png)
+

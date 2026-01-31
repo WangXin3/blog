@@ -1,8 +1,8 @@
 /** @type {import("pliny/config").PlinyConfig } */
 const siteMetadata = {
-  title: '个人站',
+  title: 'Xin的随笔',
   author: 'Xin Wang',
-  headerTitle: 'Xin Wang的个人站',
+  headerTitle: 'Xin的随笔',
   description: '',
   language: 'zh-cn',
   theme: 'system', // system, dark or light
@@ -59,7 +59,7 @@ const siteMetadata = {
     // content security policy in the `next.config.js` file.
     // Select a provider and use the environment variables associated to it
     // https://vercel.com/docs/environment-variables
-    provider: 'giscus', // supported providers: giscus, utterances, disqus
+    // provider: 'giscus', // supported providers: giscus, utterances, disqus
     giscusConfig: {
       // Visit the link below, and follow the steps in the 'configuration' section
       // https://giscus.app/
